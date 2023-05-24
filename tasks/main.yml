@@ -1,0 +1,62 @@
+---
+- name: Create directory for binary
+  file:
+    path: /opt/defined
+    state: directory
+    owner: root
+    group: root
+    mode: '1755'
+
+- name: Determine latest dnclient release
+  block:
+    - name: Fetch dnclient release information
+      uri:
+        url: https://api.defined.net/v1/downloads
+        return_content: yes
+      register: dnclient_downloads
+
+    - set_fact:
+        dnclient_architecture: "{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}"
+        # Default to Linux if the OS isn't found in the below map
+        dnclient_os: linux
+        dnclient_os_map:
+          FreeBSD: freebsd
+          Darwin: macos
+          Windows: windows
+    - set_fact:
+        dnclient_os: "{{ dnclient_os_map[ansible_os_family] }}"
+      when: ansible_os_family in dnclient_os_map
+
+    - set_fact:
+        dnclient_latest_url: "{{ dnclient_downloads.json | json_query(query) }}"
+      vars:
+        query: 'data.dnclient.latest."{{dnclient_os}}-{{ dnclient_architecture }}"'
+  when: dnclient_latest_url is not defined
+
+- name: Download latest dnclient
+  get_url:
+    url: "{{ dnclient_latest_url }}"
+    dest: /opt/defined/dnclient
+    mode: '0755'
+  notify: restart dnclient
+
+- name: Populate service facts
+  service_facts:
+
+- name: Install dnclient service
+  command:
+    cmd: /opt/defined/dnclient install
+  when: "'dnclient.service' not in ansible_facts.services"
+  notify: restart dnclient
+
+- name: Gather the package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Allow all dnclient access to this host
+  community.general.ufw:
+    rule: allow
+    src: 192.168.123.0/24 #FIXME var
+  when: "'ufw' in ansible_facts.packages"
+
+# Use enroll playbook to enroll the host
