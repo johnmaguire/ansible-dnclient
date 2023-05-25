@@ -1,7 +1,7 @@
 ---
 - name: Create directory for binary
   file:
-    path: /opt/defined
+    path: "{{ dnclient_install_dir }}"
     state: directory
     owner: root
     group: root
@@ -36,7 +36,7 @@
 - name: Download latest dnclient
   get_url:
     url: "{{ dnclient_latest_url }}"
-    dest: /opt/defined/dnclient
+    dest: "{{ dnclient_install_dir }}/dnclient"
     mode: '0755'
     force: yes
   notify: restart dnclient
@@ -46,7 +46,7 @@
 
 - name: Install dnclient service
   command:
-    cmd: /opt/defined/dnclient install
+    cmd: "{{ dnclient_install_dir }}/dnclient install"
   when: "'dnclient.service' not in ansible_facts.services"
   notify: restart dnclient
 
