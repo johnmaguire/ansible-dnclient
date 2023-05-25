@@ -1,2 +1,8 @@
 ---
 # vars file for dnclient
+
+# dnclient_latest_url allows you to override the dnclient binary to download
+#dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
+
+# dnclient_network_cidr lets you define a network CIDR to allow traffic from in firewalls
+#dnclient_network_cidr: "192.168.123.0/24"

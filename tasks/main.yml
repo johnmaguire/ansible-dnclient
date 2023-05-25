@@ -56,7 +56,5 @@
 - name: Allow all dnclient access to this host
   community.general.ufw:
     rule: allow
-    src: 192.168.123.0/24 #FIXME var
-  when: "'ufw' in ansible_facts.packages"
-
-# Use enroll playbook to enroll the host
+    src: "{{ dnclient_network_cidr }}"
+  when: "'ufw' in ansible_facts.packages and dnclient_network_cidr is defined"

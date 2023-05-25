@@ -19,6 +19,12 @@ dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclien
 
 Otherwise the latest version will be downloaded.
 
+For hosts running the ufw firewall, you can allow dnclient traffic with the following variable:
+
+```
+dnclient_network_cidr: "192.168.123.0/24"
+```
+
 Dependencies
 ------------
 
