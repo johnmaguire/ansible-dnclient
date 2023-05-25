@@ -38,6 +38,7 @@
     url: "{{ dnclient_latest_url }}"
     dest: /opt/defined/dnclient
     mode: '0755'
+    force: yes
   notify: restart dnclient
 
 - name: Populate service facts
