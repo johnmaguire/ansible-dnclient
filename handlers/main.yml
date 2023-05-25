@@ -1,12 +1,12 @@
 ---
 - name: Restart dnclient
-  command:
+  shell:
     cmd: /opt/defined/dnclient stop && /opt/defined/dnclient start
   when: "'dnclient.service' in ansible_facts.services and ansible_facts.services['dnclient.service'].state == 'running'"
   listen: "restart dnclient"
 
 - name: Start dnclient
-  command:
+  shell:
     cmd: /opt/defined/dnclient start
   when: "'dnclient.service' in ansible_facts.services and ansible_facts.services['dnclient.service'].state != 'running'"
   listen: "restart dnclient"
