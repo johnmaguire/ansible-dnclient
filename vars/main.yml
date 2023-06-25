@@ -4,5 +4,24 @@
 # dnclient_latest_url allows you to override the dnclient binary to download
 #dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
 
-# dnclient_network_cidr lets you define a network CIDR to allow traffic from in firewalls
+# dnclient_api_key is used to lookup network information and enroll hosts
+#dnclient_api_key: ... store this in ansible-vault or similar ...
+
+# dnclient_network_id lets you specify the network ID specified when creating a host.
+# By default, this will be looked up using dnclient_api_key.
+#dnclient_network_id: "network-AAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+# dnclient_role_id allows for specifying a role ID when creating a host.
+#dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+# dnclient_network_cidr lets you define a network CIDR to add an exception for in firewalls (currently only ufw is supported)
+# If dnclient_api_key is defined, this will be automatically looked up.
 #dnclient_network_cidr: "192.168.123.0/24"
+
+# dnclient_hostname lets you define the host's DN hostname.
+# By default he inventory hostname will be used.
+#dnclient_hostname: "lighthouse1"
+
+# dnclient_ip_address can be used to specify the host's DN IP address.
+# By default the server will select the next available address.
+#dnclient_ip_address: "192.168.123.1"

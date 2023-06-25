@@ -12,6 +12,8 @@
     - name: Fetch dnclient release information
       uri:
         url: https://api.defined.net/v1/downloads
+        headers:
+          Authorization: "Bearer {{ dnclient_api_key | default(omit) }}"
         return_content: yes
       register: dnclient_downloads
 
@@ -31,7 +33,7 @@
         dnclient_latest_url: "{{ dnclient_downloads.json | json_query(query) }}"
       vars:
         query: 'data.dnclient.latest."{{dnclient_os}}-{{ dnclient_architecture }}"'
-  when: dnclient_latest_url is not defined
+      when: dnclient_latest_url is not defined
 
 - name: Download latest dnclient
   get_url:
@@ -50,12 +52,66 @@
   when: "'dnclient.service' not in ansible_facts.services"
   notify: restart dnclient
 
-- name: Gather the package facts
-  ansible.builtin.package_facts:
-    manager: auto
+- name: Fetch network information
+  uri:
+    url: https://api.defined.net/v1/networks
+    method: GET
+    headers:
+      Authorization: "Bearer {{ dnclient_api_key }}"
+  register: dn_network_results
+  when: dnclient_api_key is defined and (dnclient_enroll or dnclient_firewall_exception)
 
-- name: Allow all dnclient access to this host
-  community.general.ufw:
-    rule: allow
-    src: "{{ dnclient_network_cidr }}"
-  when: "'ufw' in ansible_facts.packages and dnclient_network_cidr is defined"
+- name: Populate network facts
+  set_fact:
+    dn_network_id: "{{ dnclient_network_id | default(dn_network.id) }}"
+    dn_network_cidr: "{{ dnclient_network_cidr | default(dn_network.cidr) }}"
+  vars:
+    dn_network: "{{ dn_network_results.json.data[0] }}"
+  when: dn_network_results.json is defined
+
+- name: Check if dnclient is enrolled
+  stat:
+    path: /etc/defined/dnclient.yml
+  register: dnclient_dnclient_yml
+  when: dnclient_enroll
+
+- name: Create and enroll host in DN inventory
+  block:
+    - name: Ensure dnclient service is started
+      block:
+        - command: /bin/true
+          notify: restart dnclient
+        - meta: flush_handlers
+
+    # TODO handle ERR_DUPLICATE_VALUE - maybe we should re-enroll?
+    - name: Create host in DN inventory
+      uri:
+        url: https://api.defined.net/v1/host-and-enrollment-code
+        method: POST
+        headers:
+          Authorization: "Bearer {{ dnclient_api_key }}"
+        body_format: json
+        body:
+          name: "{{ dnclient_hostname | default(inventory_hostname) }}"
+          networkID: "{{ dn_network_id }}"
+          roleID: "{{ dnclient_role_id | default(omit) }}"
+          ipAddress: "{{ dnclient_ip_address | default(omit) }}"
+      register: dn_host_results
+
+    - name: Enroll host using enrollment code
+      command:
+        cmd: "{{ dnclient_install_dir }}/dnclient enroll -code {{ dn_host_results.json.data.enrollmentCode.code }}"
+  when: dnclient_enroll and not dnclient_dnclient_yml.stat.exists
+
+- name: Add a firewall exception for dnclient network
+  block:
+    - name: Gather the package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Add an exception for dnclient network CIDR in ufw
+      community.general.ufw:
+        rule: allow
+        src: "{{ dn_network_cidr }}"
+      when: "'ufw' in ansible_facts.packages and dn_network_cidr is defined"
+  when: dnclient_firewall_exception
