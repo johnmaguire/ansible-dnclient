@@ -91,11 +91,19 @@
         headers:
           Authorization: "Bearer {{ dnclient_api_key }}"
         body_format: json
-        body:
-          name: "{{ dnclient_hostname | default(inventory_hostname) }}"
-          networkID: "{{ dn_network_id }}"
-          roleID: "{{ dnclient_role_id | default(omit) }}"
-          ipAddress: "{{ dnclient_ip_address | default(omit) }}"
+        body: "{{ enrollment_payload }}"
+      vars:
+        enrollment_payload: |
+          {
+            "name": {{ dnclient_hostname | default(inventory_hostname) | to_json }},
+            "networkID": {{ dn_network_id | to_json }},
+            "roleID": {{ dnclient_role_id | default('') | to_json  }},
+            "ipAddress": {{ dnclient_ip_address | default('') | to_json }},
+            "staticAddresses": {{ dnclient_static_addresses | default([]) | to_json }},
+            "listenPort": {{ dnclient_listen_port | default(0) | to_json }},
+            "isLighthouse": {{ dnclient_is_lighthouse | default(false) | to_json }},
+            "isRelay": {{ dnclient_is_relay | default(false) | to_json }}
+          }
       register: dn_host_results
 
     - name: Enroll host using enrollment code

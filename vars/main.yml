@@ -25,3 +25,18 @@
 # dnclient_ip_address can be used to specify the host's DN IP address.
 # By default the server will select the next available address.
 #dnclient_ip_address: "192.168.123.1"
+
+# dnclient_is_lighthouse can be used to mark the host as a lighthouse.
+# Note: A host may be a lighthouse or a relay, but not both.
+#dnclient_is_lighthouse: yes
+
+# dnclient_is_relay can be used to mark the host as a relay.
+# Note: A host may be a lighthouse or a relay, but not both.
+#dnclient_is_relay: yes
+
+# dnclient_static_addresses can be used to specify static address:port combinations to locate a host.
+# These can be defined using DNS names or IP addresses. Relays and lighthouses must specify at least one static address.
+#dnclient_static_addresses: ["lighthouse1.example.com:4242"]
+
+# dnclient_listen_port allows you to specify a static port for Nebula to listen on.
+#dnclient_listen_port: 4242
