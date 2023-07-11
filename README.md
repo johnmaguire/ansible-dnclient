@@ -43,8 +43,13 @@ Optionally, you can configure the enrolled host using:
 
 ```
 dnclient_hostname: "lighthouse1"
+dnclient_network_id: "network-AAAAAAAAAAAAAAAAAAAAAAAAAA"
 dnclient_ip_address: "192.168.123.1"
 dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
+dnclient_static_addresses: ["lighthouse1.example.com:4242"]
+dnclient_listen_port: 4242
+dnclient_is_lighthouse: true
+dnclient_is_relay: true
 ```
 
 Dependencies
