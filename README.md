@@ -25,13 +25,6 @@ By default, dnclient will be installed to `/opt/defined/dnclient`. You can chang
 dnclient_install_dir: "/usr/local/bin"
 ```
 
-For hosts running the ufw firewall, you can allow dnclient traffic with the following variables:
-
-```
-dnclient_firewall_exception: true
-dnclient_network_cidr: "192.168.123.0/24" # auto-detected if dnclient_api_key is set
-```
-
 You can enroll the host with the following variables:
 
 ```
@@ -50,6 +43,13 @@ dnclient_static_addresses: ["lighthouse1.example.com:4242"]
 dnclient_listen_port: 4242
 dnclient_is_lighthouse: true
 dnclient_is_relay: true
+```
+
+For hosts running the ufw firewall, you can allow dnclient traffic with the following variables:
+
+```
+dnclient_firewall_exception: true
+dnclient_network_cidr: "192.168.123.0/24" # auto-detected if dnclient_api_key is set
 ```
 
 Dependencies
