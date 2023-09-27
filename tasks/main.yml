@@ -102,7 +102,8 @@
             "staticAddresses": {{ dnclient_static_addresses | default([]) | to_json }},
             "listenPort": {{ dnclient_listen_port | default(0) | to_json }},
             "isLighthouse": {{ dnclient_is_lighthouse | default(false) | to_json }},
-            "isRelay": {{ dnclient_is_relay | default(false) | to_json }}
+            "isRelay": {{ dnclient_is_relay | default(false) | to_json }},
+            "tags": {{ dnclient_tags | default([]) | to_json }}
           }
       register: dn_host_results
 

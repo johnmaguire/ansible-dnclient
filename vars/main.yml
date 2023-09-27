@@ -40,3 +40,6 @@
 
 # dnclient_listen_port allows you to specify a static port for Nebula to listen on.
 #dnclient_listen_port: 4242
+
+# dnclient_tags is a list of key-value tags to assign to the host.
+#dnclient_tags: ["env:prod"]

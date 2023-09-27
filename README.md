@@ -43,6 +43,7 @@ dnclient_static_addresses: ["lighthouse1.example.com:4242"]
 dnclient_listen_port: 4242
 dnclient_is_lighthouse: true
 dnclient_is_relay: true
+dnclient_tags: ["env:prod"]
 ```
 
 For hosts running the ufw firewall, you can allow dnclient traffic with the following variables:
