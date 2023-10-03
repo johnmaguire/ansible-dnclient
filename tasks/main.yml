@@ -47,10 +47,9 @@
   service_facts:
 
 - name: Install dnclient service
-  command:
-    cmd: "{{ dnclient_install_dir }}/dnclient install"
+  shell:
+    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
   when: "'dnclient.service' not in ansible_facts.services"
-  notify: restart dnclient
 
 - name: Fetch network information
   uri:
