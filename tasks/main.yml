@@ -18,21 +18,21 @@
       register: dnclient_downloads
 
     - set_fact:
-        dnclient_architecture: "{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}"
-        # Default to Linux if the OS isn't found in the below map
-        dnclient_os: linux
+        dnclient_arch_map:
+          x86_64: amd64
+          aarch64: arm64
         dnclient_os_map:
           FreeBSD: freebsd
           Darwin: macos
           Windows: windows
     - set_fact:
-        dnclient_os: "{{ dnclient_os_map[ansible_os_family] }}"
-      when: ansible_os_family in dnclient_os_map
+        dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
+        dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
 
     - set_fact:
         dnclient_latest_url: "{{ dnclient_downloads.json | json_query(query) }}"
       vars:
-        query: 'data.dnclient.latest."{{dnclient_os}}-{{ dnclient_architecture }}"'
+        query: 'data.dnclient.latest."{{dnclient_os}}-{{ dnclient_arch }}"'
       when: dnclient_latest_url is not defined
 
 - name: Download latest dnclient
