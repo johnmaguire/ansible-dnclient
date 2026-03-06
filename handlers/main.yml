@@ -1,12 +1,16 @@
 ---
-- name: Restart dnclient
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient stop && {{ dnclient_install_dir }}/dnclient start"
-  when: "'dnclient.service' in ansible_facts.services and ansible_facts.services['dnclient.service'].state == 'running'"
+- name: Check if dnclient is running
+  shell: pgrep -x dnclient
+  register: dnclient_running
+  failed_when: false
+  changed_when: false
+  listen: "restart dnclient"
+
+- name: Stop dnclient if running
+  shell: "{{ dnclient_install_dir }}/dnclient stop"
+  when: dnclient_running.rc == 0
   listen: "restart dnclient"
 
 - name: Start dnclient
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient start"
-  when: "'dnclient.service' in ansible_facts.services and ansible_facts.services['dnclient.service'].state != 'running'"
+  shell: "{{ dnclient_install_dir }}/dnclient start"
   listen: "restart dnclient"

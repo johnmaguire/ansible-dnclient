@@ -1,10 +1,14 @@
 ---
+- name: Set root group for OS
+  set_fact:
+    root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
+
 - name: Create directory for binary
   file:
     path: "{{ dnclient_install_dir }}"
     state: directory
     owner: root
-    group: root
+    group: "{{ root_group }}"
     mode: '1755'
 
 - name: Determine latest dnclient release
@@ -21,6 +25,7 @@
         dnclient_arch_map:
           x86_64: amd64
           aarch64: arm64
+          arm64: arm64
         dnclient_os_map:
           FreeBSD: freebsd
           Darwin: macos
@@ -30,9 +35,11 @@
         dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
 
     - set_fact:
-        dnclient_latest_url: "{{ dnclient_downloads.json | json_query(query) }}"
-      vars:
-        query: 'data.dnclient.latest."{{dnclient_os}}-{{ dnclient_arch }}"'
+        dnclient_download_key: "{{ (dnclient_os == 'macos') | ternary('macos-universal-server', dnclient_os ~ '-' ~ dnclient_arch) }}"
+
+    - set_fact:
+        dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
+
       when: dnclient_latest_url is not defined
 
 - name: Download latest dnclient
@@ -45,11 +52,21 @@
 
 - name: Populate service facts
   service_facts:
+  when: ansible_os_family != "Darwin"
 
-- name: Install dnclient service
+- name: Install dnclient service (Linux)
   shell:
     cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
-  when: "'dnclient.service' not in ansible_facts.services"
+  when:
+    - ansible_os_family != "Darwin"
+    - "'dnclient.service' not in ansible_facts.services"
+
+- name: Install dnclient service (macOS)
+  shell:
+    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
+  args:
+    creates: /Library/LaunchDaemons/com.defined.dnclient.plist
+  when: ansible_os_family == "Darwin"
 
 - name: Fetch network information
   uri:
@@ -78,8 +95,9 @@
   block:
     - name: Ensure dnclient service is started
       block:
-        - command: /bin/true
+        - debug: msg="triggering dnclient restart"
           notify: restart dnclient
+          changed_when: true
         - meta: flush_handlers
 
     # TODO handle ERR_DUPLICATE_VALUE - maybe we should re-enroll?
