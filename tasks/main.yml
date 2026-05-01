@@ -65,8 +65,13 @@
   shell:
     cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
   args:
-    creates: /Library/LaunchDaemons/com.defined.dnclient.plist
+    creates: /Library/LaunchDaemons/dnclient.plist
   when: ansible_os_family == "Darwin"
+
+- name: Ensure dnclient is running
+  ansible.builtin.service:
+    name: dnclient
+    state: started
 
 - name: Fetch network information
   uri:
