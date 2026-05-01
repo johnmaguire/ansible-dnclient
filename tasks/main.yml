@@ -68,10 +68,17 @@
     creates: /Library/LaunchDaemons/dnclient.plist
   when: ansible_os_family == "Darwin"
 
-- name: Ensure dnclient is running
+- name: Ensure dnclient is running (Linux)
   ansible.builtin.service:
     name: dnclient
     state: started
+  when: ansible_os_family != "Darwin"
+
+- name: Ensure dnclient is running (macOS)
+  community.general.launchd:
+    name: dnclient
+    state: started
+  when: ansible_os_family == "Darwin"
 
 - name: Fetch network information
   uri:
