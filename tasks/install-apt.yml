@@ -1,0 +1,87 @@
+---
+# Install dnclient from the Defined Networking apt repository.
+# https://dl.defined.net/stable/apt
+
+# Detect hosts previously set up via the binary install method. `dnclient
+# install` (kardianos/service) writes its unit to
+# /etc/systemd/system/dnclient.service, which shadows the package's unit in
+# /lib/systemd/system. The deb never writes to /etc/systemd/system, so a unit
+# file there is unambiguously the legacy one.
+- name: Check for a legacy binary-install service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/dnclient.service
+  register: dnclient_legacy_unit
+
+- name: Ensure apt keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Add Defined Networking apt signing key
+  ansible.builtin.get_url:
+    url: https://dl.defined.net/gpg.asc
+    dest: /etc/apt/keyrings/defined-net.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Add Defined Networking apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/defined-net.asc] https://dl.defined.net/stable/apt stable main"
+    filename: defined-net
+    state: present
+    update_cache: yes
+
+# Install the package while the legacy unit is still active. The two units use
+# different binaries/paths and coexist; the legacy /etc unit keeps shadowing the
+# packaged /lib unit, so the running dnclient is NOT disturbed by the install.
+# This is critical for hosts reached over their own dnclient link — there must
+# be no window where the service is stopped between Ansible tasks.
+- name: Install dnclient
+  ansible.builtin.apt:
+    name: dnclient
+    state: latest
+    update_cache: yes
+
+# Now atomically switch onto the packaged unit. The old service stays up through
+# the unit removal and daemon-reload (neither stops a running service); only the
+# final restart briefly bounces dnclient, and that restart is detached so it
+# survives the tunnel drop it causes (see handlers). Enrollment state in
+# /var/lib/defined (or legacy /etc/defined, which dnclient still reads) is left
+# in place, so the host re-attaches with the same identity.
+- name: Switch onto the packaged dnclient unit
+  when: dnclient_legacy_unit.stat.exists
+  block:
+    - name: Remove the legacy binary-install service unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnclient.service
+        state: absent
+
+    - name: Reload systemd so the packaged unit takes effect
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Restart dnclient onto the packaged unit (detached; survives the tunnel drop)
+      ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
+
+    - name: Wait for dnclient connection to recover
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 90
+
+- name: Ensure dnclient is enabled and running
+  ansible.builtin.systemd:
+    name: dnclient
+    enabled: yes
+    state: started
+
+- name: Remove the stale downloaded dnclient binary
+  # On migrated hosts the binary previously lived in dnclient_install_dir; the
+  # apt package now provides /usr/bin/dnclient, so the old copy is no longer
+  # updated and should be removed.
+  ansible.builtin.file:
+    path: "{{ dnclient_install_dir }}/dnclient"
+    state: absent

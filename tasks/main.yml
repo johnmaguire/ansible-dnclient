@@ -1,84 +1,25 @@
 ---
-- name: Set root group for OS
+- name: Set dnclient install facts
   set_fact:
     root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
+    # Debian/Ubuntu install from the Defined Networking apt repository. All
+    # other platforms (Arch, macOS) download the binary from the downloads API,
+    # as Defined Networking does not publish packages for them.
+    dnclient_install_method: "{{ 'apt' if ansible_os_family == 'Debian' else 'binary' }}"
 
-- name: Create directory for binary
-  file:
-    path: "{{ dnclient_install_dir }}"
-    state: directory
-    owner: root
-    group: "{{ root_group }}"
-    mode: '1755'
+- name: Set dnclient binary path
+  set_fact:
+    # The apt package installs to /usr/bin; the downloaded binary lives in
+    # dnclient_install_dir.
+    dnclient_bin: "{{ '/usr/bin/dnclient' if dnclient_install_method == 'apt' else dnclient_install_dir ~ '/dnclient' }}"
 
-- name: Determine latest dnclient release
-  block:
-    - name: Fetch dnclient release information
-      uri:
-        url: https://api.defined.net/v1/downloads
-        headers:
-          Authorization: "Bearer {{ dnclient_api_key | default(omit) }}"
-        return_content: yes
-      register: dnclient_downloads
+- name: Install dnclient from the apt repository (Debian/Ubuntu)
+  include_tasks: install-apt.yml
+  when: dnclient_install_method == 'apt'
 
-    - set_fact:
-        dnclient_arch_map:
-          x86_64: amd64
-          aarch64: arm64
-          arm64: arm64
-        dnclient_os_map:
-          FreeBSD: freebsd
-          Darwin: macos
-          Windows: windows
-    - set_fact:
-        dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
-        dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
-
-    - set_fact:
-        dnclient_download_key: "{{ (dnclient_os == 'macos') | ternary('macos-universal-server', dnclient_os ~ '-' ~ dnclient_arch) }}"
-
-    - set_fact:
-        dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
-
-      when: dnclient_latest_url is not defined
-
-- name: Download latest dnclient
-  get_url:
-    url: "{{ dnclient_latest_url }}"
-    dest: "{{ dnclient_install_dir }}/dnclient"
-    mode: '0755'
-    force: yes
-  notify: restart dnclient
-
-- name: Populate service facts
-  service_facts:
-  when: ansible_os_family != "Darwin"
-
-- name: Install dnclient service (Linux)
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
-  when:
-    - ansible_os_family != "Darwin"
-    - "'dnclient.service' not in ansible_facts.services"
-
-- name: Install dnclient service (macOS)
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
-  args:
-    creates: /Library/LaunchDaemons/dnclient.plist
-  when: ansible_os_family == "Darwin"
-
-- name: Ensure dnclient is running (Linux)
-  ansible.builtin.service:
-    name: dnclient
-    state: started
-  when: ansible_os_family != "Darwin"
-
-- name: Ensure dnclient is running (macOS)
-  community.general.launchd:
-    name: dnclient
-    state: started
-  when: ansible_os_family == "Darwin"
+- name: Install dnclient from the downloads API (Arch, macOS)
+  include_tasks: install-binary.yml
+  when: dnclient_install_method == 'binary'
 
 - name: Fetch network information
   uri:
@@ -98,9 +39,20 @@
   when: dn_network_results.json is defined
 
 - name: Check if dnclient is enrolled
+  # The apt package stores network state in /var/lib/defined; older binary
+  # installs use the legacy /etc/defined. Treat the host as enrolled if a
+  # config exists in either location.
   stat:
-    path: /etc/defined/dnclient.yml
-  register: dnclient_dnclient_yml
+    path: "{{ item }}"
+  loop:
+    - /var/lib/defined/dnclient.yml
+    - /etc/defined/dnclient.yml
+  register: dnclient_config_stat
+  when: dnclient_enroll
+
+- name: Determine enrollment status
+  set_fact:
+    dnclient_enrolled: "{{ dnclient_config_stat.results | selectattr('stat.exists') | list | length > 0 }}"
   when: dnclient_enroll
 
 - name: Create and enroll host in DN inventory
@@ -138,8 +90,8 @@
 
     - name: Enroll host using enrollment code
       command:
-        cmd: "{{ dnclient_install_dir }}/dnclient enroll -code {{ dn_host_results.json.data.enrollmentCode.code }}"
-  when: dnclient_enroll and not dnclient_dnclient_yml.stat.exists
+        cmd: "{{ dnclient_bin }} enroll -code {{ dn_host_results.json.data.enrollmentCode.code }}"
+  when: dnclient_enroll and not (dnclient_enrolled | default(false))
 
 - name: Add a firewall exception for dnclient network
   block:

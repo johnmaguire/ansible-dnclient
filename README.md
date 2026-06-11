@@ -3,6 +3,17 @@ Ansible Role: `johnmaguire.dnclient`
 
 Installs [dnclient](https://defined.net) on some servers.
 
+Installation Method
+-------------------
+
+On Debian and Ubuntu hosts, dnclient is installed from the [Defined Networking
+apt repository](https://dl.defined.net/stable/apt) (`dnclient` package), so
+updates flow through normal `apt` upgrades.
+
+On all other platforms (e.g. Arch Linux, macOS) the binary is downloaded from
+the Defined Networking downloads API and the service is installed manually, as
+no package is published for them.
+
 Requirements
 ------------
 
@@ -11,7 +22,8 @@ None
 Role Variables
 --------------
 
-You can override the dnclient download URL with the following variable:
+For platforms that download the binary (non-Debian), you can override the
+download URL with the following variable:
 
 ```
 dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
@@ -19,7 +31,10 @@ dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclien
 
 Otherwise the latest version will be downloaded.
 
-By default, dnclient will be installed to `/opt/defined/dnclient`. You can change the install directory with the following variable:
+For these platforms, dnclient will be installed to `/opt/defined/dnclient` by
+default. You can change the install directory with the following variable
+(this has no effect on apt-managed hosts, where the package installs to
+`/usr/bin/dnclient`):
 
 ```
 dnclient_install_dir: "/usr/local/bin"
