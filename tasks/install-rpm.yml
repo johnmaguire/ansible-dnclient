@@ -1,0 +1,35 @@
+---
+# Install dnclient from the Defined Networking rpm repository.
+# https://dl.defined.net/stable/rpm
+
+# Detect a legacy binary-install unit (see finalize-package.yml). On RPM hosts
+# the package ships its unit in /usr/lib/systemd/system; a unit at
+# /etc/systemd/system is the legacy binary install.
+- name: Check for a legacy binary-install service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/dnclient.service
+  register: dnclient_legacy_unit
+
+- name: Import Defined Networking rpm signing key
+  ansible.builtin.rpm_key:
+    key: https://dl.defined.net/gpg.asc
+    state: present
+
+- name: Add Defined Networking rpm repository
+  ansible.builtin.get_url:
+    url: https://dl.defined.net/stable/rpm/defined-net.repo
+    dest: /etc/yum.repos.d/defined-net.repo
+    owner: root
+    group: root
+    mode: '0644'
+
+# Installed while the legacy unit (if any) is still active, so the running
+# service is undisturbed; finalize-package.yml does the atomic switch.
+- name: Install dnclient
+  ansible.builtin.dnf:
+    name: dnclient
+    state: latest
+    update_cache: true
+
+- name: Finalize dnclient package install
+  ansible.builtin.include_tasks: finalize-package.yml

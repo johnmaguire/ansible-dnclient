@@ -7,8 +7,9 @@ Installation Method
 -------------------
 
 On Debian and Ubuntu hosts, dnclient is installed from the [Defined Networking
-apt repository](https://dl.defined.net/stable/apt) (`dnclient` package), so
-updates flow through normal `apt` upgrades.
+apt repository](https://dl.defined.net/stable/apt) (`dnclient` package), and on
+RHEL/Fedora hosts from the [rpm repository](https://dl.defined.net/stable/rpm),
+so updates flow through normal `apt`/`dnf` upgrades.
 
 On all other platforms (e.g. Arch Linux, macOS) the binary is downloaded from
 the Defined Networking downloads API and the service is installed manually, as

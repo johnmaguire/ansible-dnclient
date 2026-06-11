@@ -1,0 +1,42 @@
+---
+# Shared finalization for the apt and rpm package install paths.
+#
+# Migrate off any legacy binary install, then ensure the packaged unit is
+# enabled and running. The package was already installed by the caller while the
+# legacy unit (if any) was still active, so the running service was never
+# disturbed; here we remove the shadowing /etc/systemd/system/dnclient.service,
+# reload systemd, and do a single detached restart onto the packaged unit. The
+# restart is detached so it survives the tunnel drop it causes on hosts reached
+# over their own dnclient link (see handlers).
+- name: Switch onto the packaged dnclient unit
+  when: dnclient_legacy_unit.stat.exists
+  block:
+    - name: Remove the legacy binary-install service unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnclient.service
+        state: absent
+
+    - name: Reload systemd so the packaged unit takes effect
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Restart dnclient onto the packaged unit (detached; survives the tunnel drop)
+      ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
+
+    - name: Wait for dnclient connection to recover
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 90
+
+- name: Ensure dnclient is enabled and running
+  ansible.builtin.systemd:
+    name: dnclient
+    enabled: yes
+    state: started
+
+- name: Remove the stale downloaded dnclient binary
+  # On migrated hosts the binary previously lived in dnclient_install_dir; the
+  # package now provides /usr/bin/dnclient, so the old copy is no longer updated.
+  ansible.builtin.file:
+    path: "{{ dnclient_install_dir }}/dnclient"
+    state: absent
