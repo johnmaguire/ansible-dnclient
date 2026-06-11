@@ -1,16 +1,20 @@
 ---
-- name: Check if dnclient is running
-  shell: pgrep -x dnclient
-  register: dnclient_running
-  failed_when: false
-  changed_when: false
+# Restarting dnclient severs the very connection Ansible may be using to reach
+# the host (any host reached over its own Nebula link — e.g. a host addressed by
+# its dnclient IP). Doing stop and start as separate tasks strands such a host:
+# the stop kills the connection before Ansible can deliver the start.
+#
+# Instead, launch the restart detached (nohup + &) so it completes on the host
+# regardless of the connection dropping, then wait for Ansible to reconnect once
+# the tunnel is back. On hosts whose control path is independent of their own
+# dnclient (e.g. Incus instances reached via the hypervisor), the wait returns
+# immediately since nothing dropped.
+- name: Restart dnclient
+  ansible.builtin.shell: "nohup sh -c '{{ dnclient_bin }} stop && {{ dnclient_bin }} start' >/dev/null 2>&1 &"
   listen: "restart dnclient"
 
-- name: Stop dnclient if running
-  shell: "{{ dnclient_install_dir }}/dnclient stop"
-  when: dnclient_running.rc == 0
-  listen: "restart dnclient"
-
-- name: Start dnclient
-  shell: "{{ dnclient_install_dir }}/dnclient start"
+- name: Wait for dnclient connection to recover
+  ansible.builtin.wait_for_connection:
+    delay: 2
+    timeout: 90
   listen: "restart dnclient"
