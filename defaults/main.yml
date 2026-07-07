@@ -1,5 +1,8 @@
 ---
 # defaults file for dnclient
 dnclient_install_dir: "/opt/defined"
+# Unprivileged user the AUR build runs as on Arch. Must exist, have yay
+# installed, and be able to run pacman via passwordless sudo.
+dnclient_aur_builder_user: "builduser"
 dnclient_firewall_exception: false
 dnclient_enroll: false

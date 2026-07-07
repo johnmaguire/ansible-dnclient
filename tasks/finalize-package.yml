@@ -1,5 +1,5 @@
 ---
-# Shared finalization for the apt and rpm package install paths.
+# Shared finalization for the apt, rpm, and aur package install paths.
 #
 # Migrate off any legacy binary install, then ensure the packaged unit is
 # enabled and running. The package was already installed by the caller while the

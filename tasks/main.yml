@@ -3,15 +3,15 @@
   set_fact:
     root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
     # Debian/Ubuntu install from the apt repository, RHEL/Fedora from the rpm
-    # repository. Platforms without a package (Arch, macOS) download the binary
-    # from the downloads API.
-    dnclient_install_method: "{{ 'apt' if ansible_os_family == 'Debian' else ('rpm' if ansible_os_family == 'RedHat' else 'binary') }}"
+    # repository, Arch from the AUR. Platforms without a package (macOS)
+    # download the binary from the downloads API.
+    dnclient_install_method: "{{ 'apt' if ansible_os_family == 'Debian' else ('rpm' if ansible_os_family == 'RedHat' else ('aur' if ansible_os_family == 'Archlinux' else 'binary')) }}"
 
 - name: Set dnclient binary path
   set_fact:
-    # The apt/rpm packages install to /usr/bin; the downloaded binary lives in
-    # dnclient_install_dir.
-    dnclient_bin: "{{ '/usr/bin/dnclient' if dnclient_install_method in ['apt', 'rpm'] else dnclient_install_dir ~ '/dnclient' }}"
+    # The apt/rpm/aur packages install to /usr/bin; the downloaded binary lives
+    # in dnclient_install_dir.
+    dnclient_bin: "{{ '/usr/bin/dnclient' if dnclient_install_method in ['apt', 'rpm', 'aur'] else dnclient_install_dir ~ '/dnclient' }}"
 
 - name: Install dnclient from the apt repository (Debian/Ubuntu)
   include_tasks: install-apt.yml
@@ -21,7 +21,11 @@
   include_tasks: install-rpm.yml
   when: dnclient_install_method == 'rpm'
 
-- name: Install dnclient from the downloads API (Arch, macOS)
+- name: Install dnclient from the AUR (Arch)
+  include_tasks: install-aur.yml
+  when: dnclient_install_method == 'aur'
+
+- name: Install dnclient from the downloads API (macOS)
   include_tasks: install-binary.yml
   when: dnclient_install_method == 'binary'
 
@@ -43,9 +47,9 @@
   when: dn_network_results.json is defined
 
 - name: Check if dnclient is enrolled
-  # The apt package stores network state in /var/lib/defined; older binary
-  # installs use the legacy /etc/defined. Treat the host as enrolled if a
-  # config exists in either location.
+  # The apt/rpm/aur packages store network state in /var/lib/defined; older
+  # binary installs use the legacy /etc/defined. Treat the host as enrolled if
+  # a config exists in either location.
   stat:
     path: "{{ item }}"
   loop:

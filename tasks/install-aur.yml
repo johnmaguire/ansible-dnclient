@@ -1,0 +1,30 @@
+---
+# Install dnclient from the AUR.
+# https://aur.archlinux.org/packages/dnclient
+#
+# The AUR package repackages the official deb: /usr/bin/dnclient, a unit in
+# /usr/lib/systemd/system, and state in /var/lib/defined — so it shares the
+# apt/rpm finalization.
+
+# Detect a legacy binary-install unit (see finalize-package.yml). The AUR
+# package ships its unit in /usr/lib/systemd/system; a unit at
+# /etc/systemd/system is the legacy binary install.
+- name: Check for a legacy binary-install service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/dnclient.service
+  register: dnclient_legacy_unit
+
+# AUR helpers refuse to run as root, so the build runs as an unprivileged user
+# with passwordless sudo for pacman (dnclient_aur_builder_user). Installed
+# while the legacy unit (if any) is still active, so the running service is
+# undisturbed; finalize-package.yml does the atomic switch.
+- name: Install dnclient
+  become: yes
+  become_user: "{{ dnclient_aur_builder_user }}"
+  kewlfft.aur.aur:
+    name: dnclient
+    state: latest
+    use: yay
+
+- name: Finalize dnclient package install
+  ansible.builtin.include_tasks: finalize-package.yml
