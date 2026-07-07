@@ -2,31 +2,51 @@
 # Shared finalization for the apt, rpm, and aur package install paths.
 #
 # Migrate off any legacy binary install, then ensure the packaged unit is
-# enabled and running. The package was already installed by the caller while the
-# legacy unit (if any) was still active, so the running service was never
-# disturbed; here we remove the shadowing /etc/systemd/system/dnclient.service,
-# reload systemd, and do a single detached restart onto the packaged unit. The
-# restart is detached so it survives the tunnel drop it causes on hosts reached
-# over their own dnclient link (see handlers).
-- name: Switch onto the packaged dnclient unit
+# enabled and running. Two legacy artifacts are handled:
+#
+#   - the shadowing /etc/systemd/system/dnclient.service unit, which keeps the
+#     old /opt binary running instead of the packaged one;
+#   - state in /etc/defined — the packaged unit reads /var/lib/defined, and
+#     dnclient only falls back to /etc/defined with a deprecation warning.
+#
+# The package was already installed by the caller while the legacy unit (if
+# any) was still active, so the running service was never disturbed. The unit
+# swap and state move both happen inside a single detached restart, so they
+# survive the tunnel drop they cause on hosts reached over their own dnclient
+# link (see handlers).
+- name: Check for legacy state in /etc/defined
+  ansible.builtin.stat:
+    path: /etc/defined/dnclient.yml
+  register: dnclient_legacy_state
+
+- name: Remove the legacy binary-install service unit
+  ansible.builtin.file:
+    path: /etc/systemd/system/dnclient.service
+    state: absent
   when: dnclient_legacy_unit.stat.exists
-  block:
-    - name: Remove the legacy binary-install service unit
-      ansible.builtin.file:
-        path: /etc/systemd/system/dnclient.service
-        state: absent
 
-    - name: Reload systemd so the packaged unit takes effect
-      ansible.builtin.systemd:
-        daemon_reload: yes
+- name: Reload systemd so the packaged unit takes effect
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  when: dnclient_legacy_unit.stat.exists
 
-    - name: Restart dnclient onto the packaged unit (detached; survives the tunnel drop)
-      ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
+- name: Restart dnclient onto the packaged unit, migrating legacy state (detached; survives the tunnel drop)
+  # The state move must happen while dnclient is stopped. The start is
+  # unconditional (';', not '&&') so a failed move cannot leave the host
+  # without its tunnel — dnclient still falls back to /etc/defined.
+  ansible.builtin.shell: >-
+    nohup sh -c 'systemctl stop dnclient;
+    {% if dnclient_legacy_state.stat.exists %}
+    mv /etc/defined/* /var/lib/defined/ && rmdir /etc/defined;
+    {% endif %}
+    systemctl start dnclient' >/dev/null 2>&1 &
+  when: dnclient_legacy_unit.stat.exists or dnclient_legacy_state.stat.exists
 
-    - name: Wait for dnclient connection to recover
-      ansible.builtin.wait_for_connection:
-        delay: 2
-        timeout: 90
+- name: Wait for dnclient connection to recover
+  ansible.builtin.wait_for_connection:
+    delay: 2
+    timeout: 90
+  when: dnclient_legacy_unit.stat.exists or dnclient_legacy_state.stat.exists
 
 - name: Ensure dnclient is enabled and running
   ansible.builtin.systemd:
