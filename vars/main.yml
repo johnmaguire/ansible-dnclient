@@ -14,9 +14,10 @@
 # dnclient_role_id allows for specifying a role ID when creating a host.
 #dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-# dnclient_network_cidr lets you define a network CIDR to add an exception for in firewalls (currently only ufw is supported)
-# If dnclient_api_key is defined, this will be automatically looked up.
-#dnclient_network_cidr: "192.168.123.0/24"
+# dnclient_network_cidrs lets you define the network CIDRs (IPv4 and/or IPv6)
+# to add exceptions for in firewalls (currently only ufw is supported)
+# If dnclient_api_key is defined, these will be automatically looked up.
+#dnclient_network_cidrs: ["192.168.123.0/24", "fd00:1234::/80"]
 
 # dnclient_hostname lets you define the host's DN hostname.
 # By default he inventory hostname will be used.

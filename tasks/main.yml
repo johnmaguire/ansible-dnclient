@@ -31,7 +31,7 @@
 
 - name: Fetch network information
   uri:
-    url: https://api.defined.net/v1/networks
+    url: https://api.defined.net/v2/networks
     method: GET
     headers:
       Authorization: "Bearer {{ dnclient_api_key }}"
@@ -41,7 +41,9 @@
 - name: Populate network facts
   set_fact:
     dn_network_id: "{{ dnclient_network_id | default(dn_network.id) }}"
-    dn_network_cidr: "{{ dnclient_network_cidr | default(dn_network.cidr) }}"
+    # v2 networks are dual-stack capable: cidrs lists every CIDR (IPv4 and,
+    # when enabled, IPv6).
+    dn_network_cidrs: "{{ dnclient_network_cidrs | default(dn_network.cidrs) }}"
   vars:
     dn_network: "{{ dn_network_results.json.data[0] }}"
   when: dn_network_results.json is defined
@@ -107,9 +109,10 @@
       ansible.builtin.package_facts:
         manager: auto
 
-    - name: Add an exception for dnclient network CIDR in ufw
+    - name: Add an exception for dnclient network CIDRs in ufw
       community.general.ufw:
         rule: allow
-        src: "{{ dn_network_cidr }}"
-      when: "'ufw' in ansible_facts.packages and dn_network_cidr is defined"
+        src: "{{ item }}"
+      loop: "{{ dn_network_cidrs | default([]) }}"
+      when: "'ufw' in ansible_facts.packages"
   when: dnclient_firewall_exception
