@@ -75,9 +75,13 @@
         - meta: flush_handlers
 
     # TODO handle ERR_DUPLICATE_VALUE - maybe we should re-enroll?
+    # v1 rejects hosts on v2 networks with ERR_CERT_VERSION_2_INCOMPATIBLE.
+    # v2 replaces the singular ipAddress with an ipAddresses list (max 2, one
+    # per family). On a dual-stack network an IPv4 address is only assigned if
+    # one is requested — sending the v1 field silently yields an IPv6-only host.
     - name: Create host in DN inventory
       uri:
-        url: https://api.defined.net/v1/host-and-enrollment-code
+        url: https://api.defined.net/v2/host-and-enrollment-code
         method: POST
         headers:
           Authorization: "Bearer {{ dnclient_api_key }}"
@@ -89,7 +93,7 @@
             "name": {{ dnclient_hostname | default(inventory_hostname) | to_json }},
             "networkID": {{ dn_network_id | to_json }},
             "roleID": {{ dnclient_role_id | default(None) | to_json  }},
-            "ipAddress": {{ dnclient_ip_address | default(None) | to_json }},
+            "ipAddresses": {{ dnclient_ip_addresses | default([dnclient_ip_address] if dnclient_ip_address is defined else []) | to_json }},
             "staticAddresses": {{ dnclient_static_addresses | default([]) | to_json }},
             "listenPort": {{ dnclient_listen_port | default(0) | to_json }},
             "isLighthouse": {{ dnclient_is_lighthouse | default(false) | to_json }},
