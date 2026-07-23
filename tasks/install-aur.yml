@@ -6,6 +6,17 @@
 # /usr/lib/systemd/system, and state in /var/lib/defined — so it shares the
 # apt/rpm finalization.
 
+# The AUR package follows tagged stable releases only — Defined Networking
+# publishes pre-releases to the apt/rpm repositories and dl.defined.net, but
+# not to the AUR — so there is nothing for the unstable track to install here.
+- name: Fail when the unstable track is requested on Arch
+  ansible.builtin.fail:
+    msg: >-
+      dnclient_track=unstable is not supported on Arch: the AUR dnclient
+      package tracks stable releases only. Exclude this host from the run,
+      e.g. --limit '!{{ inventory_hostname }}'.
+  when: dnclient_track == 'unstable'
+
 # Detect a legacy binary-install unit (see finalize-package.yml). The AUR
 # package ships its unit in /usr/lib/systemd/system; a unit at
 # /etc/systemd/system is the legacy binary install.

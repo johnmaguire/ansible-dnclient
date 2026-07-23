@@ -1,6 +1,6 @@
 ---
 # Install dnclient from the Defined Networking rpm repository.
-# https://dl.defined.net/stable/rpm
+# https://dl.defined.net/stable/rpm   https://dl.defined.net/unstable/rpm
 
 # Detect a legacy binary-install unit (see finalize-package.yml). On RPM hosts
 # the package ships its unit in /usr/lib/systemd/system; a unit at
@@ -15,20 +15,52 @@
     key: https://dl.defined.net/gpg.asc
     state: present
 
+# The stable and unstable .repo files declare different repo IDs
+# (defined-net-stable / defined-net-unstable) but share this path, so writing
+# the file wholesale retires the old track's repository along with it.
 - name: Add Defined Networking rpm repository
   ansible.builtin.get_url:
-    url: https://dl.defined.net/stable/rpm/defined-net.repo
+    url: "https://dl.defined.net/{{ dnclient_track }}/rpm/defined-net.repo"
     dest: /etc/yum.repos.d/defined-net.repo
     owner: root
     group: root
     mode: '0644'
 
+- name: Query the newest dnclient version offered by the repository
+  # As with apt, resolving the version explicitly is what lets a switch back to
+  # stable downgrade the host rather than leave the pre-release installed.
+  #
+  # -y is required: the repository sets repo_gpgcheck, and dnf blocks on an
+  # interactive "import this key?" prompt on first use regardless of the
+  # rpm_key import above, which only populates rpm's own keyring.
+  ansible.builtin.command: >-
+    dnf -y --quiet --disablerepo=* --enablerepo=defined-net-{{ dnclient_track }}
+    repoquery --latest-limit 1 --qf '%{evr}' dnclient
+  register: dnclient_rpm_repoquery
+  changed_when: false
+  # Read-only; see the apt path for why this must run under --check too.
+  check_mode: false
+
+- name: Determine the dnclient version to install
+  ansible.builtin.set_fact:
+    # Inline if/else rather than default(), which evaluates its argument eagerly.
+    dnclient_rpm_version: "{{ dnclient_version if dnclient_version is defined else dnclient_rpm_repoquery.stdout_lines | first | trim }}"
+  when: dnclient_version is defined or dnclient_rpm_repoquery.stdout_lines | length > 0
+
+- name: Fail when the repository offers no dnclient package
+  ansible.builtin.fail:
+    msg: >-
+      No dnclient package found in the {{ dnclient_track }} rpm repository for
+      {{ ansible_architecture }}.
+  when: dnclient_rpm_version is not defined
+
 # Installed while the legacy unit (if any) is still active, so the running
 # service is undisturbed; finalize-package.yml does the atomic switch.
 - name: Install dnclient
   ansible.builtin.dnf:
-    name: dnclient
-    state: latest
+    name: "dnclient-{{ dnclient_rpm_version }}"
+    state: present
+    allow_downgrade: true
     update_cache: true
 
 - name: Finalize dnclient package install

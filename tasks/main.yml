@@ -1,4 +1,14 @@
 ---
+- name: Validate the requested release track
+  ansible.builtin.assert:
+    that: dnclient_track in ['stable', 'unstable']
+    fail_msg: "dnclient_track must be 'stable' or 'unstable', got '{{ dnclient_track }}'"
+    quiet: yes
+
+- name: Set dnclient track facts
+  set_fact:
+    dnclient_inactive_track: "{{ 'unstable' if dnclient_track == 'stable' else 'stable' }}"
+
 - name: Set dnclient install facts
   set_fact:
     root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"

@@ -6,3 +6,7 @@ dnclient_install_dir: "/opt/defined"
 dnclient_aur_builder_user: "builduser"
 dnclient_firewall_exception: false
 dnclient_enroll: false
+# Release track to follow: "stable" or "unstable" (pre-release builds).
+# The unstable repositories are a superset of stable, so only one is ever
+# enabled at a time.
+dnclient_track: "stable"

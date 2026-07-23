@@ -1,6 +1,22 @@
 ---
 # Download the dnclient binary from the downloads API and install the service
 # manually. Used on platforms without a Defined Networking package (Arch, macOS).
+
+# The downloads API only ever serves stable releases, and dl.defined.net
+# publishes no machine-readable index for pre-releases, so the unstable track
+# has to name the build it wants. Checked up front, before the tasks below
+# start touching the filesystem.
+- name: Fail when the unstable track has no pinned version
+  ansible.builtin.fail:
+    msg: >-
+      dnclient_track=unstable requires dnclient_unstable_version to be set to a
+      published tag, e.g. "v0.9.6-rc0". Available tags are listed at
+      https://dl.defined.net/unstable/binaries/dnclient/
+  when:
+    - dnclient_latest_url is not defined
+    - dnclient_track == 'unstable'
+    - dnclient_unstable_version is not defined
+
 - name: Create directory for binary
   file:
     path: "{{ dnclient_install_dir }}"
@@ -8,6 +24,19 @@
     owner: root
     group: "{{ root_group }}"
     mode: '1755'
+
+- set_fact:
+    dnclient_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+      arm64: arm64
+    dnclient_os_map:
+      FreeBSD: freebsd
+      Darwin: macos
+      Windows: windows
+- set_fact:
+    dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
+    dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
 
 - name: Determine latest dnclient release
   block:
@@ -20,30 +49,29 @@
       register: dnclient_downloads
 
     - set_fact:
-        dnclient_arch_map:
-          x86_64: amd64
-          aarch64: arm64
-          arm64: arm64
-        dnclient_os_map:
-          FreeBSD: freebsd
-          Darwin: macos
-          Windows: windows
-    - set_fact:
-        dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
-        dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
-
-    - set_fact:
         dnclient_download_key: "{{ (dnclient_os == 'macos') | ternary('macos-universal-server', dnclient_os ~ '-' ~ dnclient_arch) }}"
 
     - set_fact:
         dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
+  when:
+    - dnclient_latest_url is not defined
+    - dnclient_track == 'stable'
 
-      when: dnclient_latest_url is not defined
+# Tags use a hyphen (v0.9.6-rc0) where apt/rpm versions use a tilde (0.9.6~rc0).
+- name: Build the unstable dnclient download URL
+  set_fact:
+    dnclient_latest_url: >-
+      https://dl.defined.net/unstable/binaries/dnclient/{{ dnclient_unstable_version }}/{{ dnclient_os }}{{ '' if dnclient_os == 'macos' else '/' ~ dnclient_arch }}/dnclient
+  when:
+    - dnclient_latest_url is not defined
+    - dnclient_track == 'unstable'
 
 - name: Download latest dnclient
   get_url:
     url: "{{ dnclient_latest_url }}"
     dest: "{{ dnclient_install_dir }}/dnclient"
+    # Pre-release builds ship a .sha256 sidecar; the downloads API does not.
+    checksum: "{{ ('sha256:' ~ dnclient_latest_url ~ '.sha256') if dnclient_track == 'unstable' else omit }}"
     mode: '0755'
     force: yes
   notify: restart dnclient

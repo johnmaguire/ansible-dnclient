@@ -4,6 +4,23 @@
 # dnclient_latest_url allows you to override the dnclient binary to download
 #dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
 
+# dnclient_track selects the release track: "stable" (default) or "unstable"
+# (pre-release builds). Not supported on Arch — the AUR package follows stable
+# releases only.
+#dnclient_track: "unstable"
+
+# dnclient_version pins an exact package version on apt/rpm hosts, overriding
+# the track's newest. Package versions spell pre-releases with a tilde, so the
+# v0.9.6-rc0 tag is 0.9.6~rc0 here. Use this when the newest build you want
+# sorts BELOW one already published — dpkg/rpm compare the pre-release word
+# alphabetically, so 0.9.6~ci4 loses to 0.9.6~rc0 no matter which came first.
+#dnclient_version: "0.9.6~rc0"
+
+# dnclient_unstable_version names the tag to install on hosts without a
+# package repository (macOS), where the unstable track has no "latest".
+# Tags use a hyphen; see https://dl.defined.net/unstable/binaries/dnclient/
+#dnclient_unstable_version: "v0.9.6-rc0"
+
 # dnclient_api_key is used to lookup network information and enroll hosts
 #dnclient_api_key: ... store this in ansible-vault or similar ...
 
