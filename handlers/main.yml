@@ -9,8 +9,18 @@
 # the tunnel is back. On hosts whose control path is independent of their own
 # dnclient (e.g. Incus instances reached via the hypervisor), the wait returns
 # immediately since nothing dropped.
-- name: Restart dnclient
+#
+# systemd hosts go through the service manager: package-managed builds are
+# compiled without the stop/start sub-commands, so invoking the binary there
+# fails outright.
+- name: Restart dnclient (systemd)
+  ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
+  when: ansible_service_mgr == 'systemd'
+  listen: "restart dnclient"
+
+- name: Restart dnclient (other)
   ansible.builtin.shell: "nohup sh -c '{{ dnclient_bin }} stop && {{ dnclient_bin }} start' >/dev/null 2>&1 &"
+  when: ansible_service_mgr != 'systemd'
   listen: "restart dnclient"
 
 - name: Wait for dnclient connection to recover
