@@ -4,6 +4,9 @@ dnclient_install_dir: "/opt/defined"
 # Unprivileged user the AUR build runs as on Arch. Must exist, have yay
 # installed, and be able to run pacman via passwordless sudo.
 dnclient_aur_builder_user: "builduser"
+# Where a custom build pushed via dnclient_custom_binary lands. Ahead of
+# /usr/bin on PATH, so it shadows the packaged binary for interactive use too.
+dnclient_custom_bin: "/usr/local/bin/dnclient"
 dnclient_firewall_exception: false
 dnclient_enroll: false
 # Release track to follow: "stable" or "unstable" (pre-release builds).

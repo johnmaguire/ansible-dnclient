@@ -48,6 +48,37 @@ default. You can change the install directory with the following variable
 dnclient_install_dir: "/usr/local/bin"
 ```
 
+Custom Builds
+-------------
+
+To run a locally built dnclient instead of a release, point
+`dnclient_custom_binary` at it on the controller:
+
+```
+dnclient_custom_binary: "/home/me/src/dnclient/build/linux-amd64/dnclient"
+```
+
+It is evaluated per host, so it can be templated by platform:
+
+```
+dnclient_custom_binary: "/home/me/src/dnclient/build/{{ dnclient_os }}-{{ dnclient_arch }}/dnclient"
+```
+
+The binary is pushed to `dnclient_custom_bin` (`/usr/local/bin/dnclient`) and
+executed there to confirm it runs on the host before anything is switched over
+to it — a binary built for the wrong OS or architecture fails the play rather
+than the tunnel. On package-managed hosts a systemd drop-in overrides the
+unit's `ExecStart`, leaving the package installed and untouched; on platforms
+that install the binary directly (macOS) it replaces the downloaded one.
+
+Unsetting `dnclient_custom_binary` and re-running removes the binary and the
+drop-in, putting the host back on the released build.
+
+Each run also compares the binary the service is actually executing against the
+intended one and restarts if they differ, so a host that lost its restart to a
+dropped connection converges on the next run rather than sitting with a correct
+drop-in and the old binary still running.
+
 On Arch Linux hosts, you can change the unprivileged user the AUR build runs
 as (see Requirements):
 

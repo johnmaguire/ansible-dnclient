@@ -1,4 +1,12 @@
 ---
+# Handlers run in the order defined here, so this precedes the restart below —
+# a change to the unit drop-in (see custom-binary.yml) is inert until reloaded.
+- name: Reload systemd units
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  when: ansible_service_mgr == 'systemd'
+  listen: "restart dnclient"
+
 # Restarting dnclient severs the very connection Ansible may be using to reach
 # the host (any host reached over its own Nebula link — e.g. a host addressed by
 # its dnclient IP). Doing stop and start as separate tasks strands such a host:
@@ -11,8 +19,8 @@
 # immediately since nothing dropped.
 #
 # systemd hosts go through the service manager: package-managed builds are
-# compiled without the stop/start sub-commands, so invoking the binary there
-# fails outright.
+# compiled without the stop/start sub-commands, and the unit is what carries
+# any drop-in overriding the binary it runs.
 - name: Restart dnclient (systemd)
   ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
   when: ansible_service_mgr == 'systemd'

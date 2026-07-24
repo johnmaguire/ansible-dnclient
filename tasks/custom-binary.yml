@@ -1,0 +1,130 @@
+---
+# Push a locally built dnclient binary and make the service run it.
+#
+# The binary is staged at dnclient_custom_bin rather than written over the
+# packaged /usr/bin/dnclient: package state stays honest, an `apt upgrade`
+# can't silently swap the custom build back out, and unsetting
+# dnclient_custom_binary is enough to return the host to the released build.
+# /usr/local/bin also precedes /usr/bin on PATH, so an interactive `dnclient`
+# is the custom build too.
+#
+# macOS has no drop-ins and its launchd plist names
+# dnclient_install_dir/dnclient, so install-binary.yml copies the staged binary
+# into place there instead of downloading a release.
+
+- name: Install a custom dnclient binary
+  when: dnclient_custom_binary is defined
+  block:
+    - name: Push the custom dnclient binary
+      ansible.builtin.copy:
+        src: "{{ dnclient_custom_binary }}"
+        dest: "{{ dnclient_custom_bin }}"
+        owner: root
+        group: "{{ root_group }}"
+        mode: '0755'
+
+    - name: Verify the custom dnclient binary runs on this host
+      # Cross-building for the wrong OS or architecture is the easy mistake to
+      # make, and what it breaks is the tunnel this play may be running over.
+      # Nothing is active yet at this point — the service still runs the
+      # released build until the drop-in below.
+      ansible.builtin.command: "{{ dnclient_custom_bin }} -version"
+      changed_when: false
+
+    - name: Ensure the dnclient drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnclient.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: ansible_service_mgr == 'systemd'
+
+    - name: Point the dnclient service at the custom binary
+      # Mirrors ExecStart from the packaged unit with the binary swapped; the
+      # empty assignment is what clears the unit's own ExecStart.
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart={{ dnclient_custom_bin }} run
+        dest: /etc/systemd/system/dnclient.service.d/10-custom-binary.conf
+        owner: root
+        group: root
+        mode: '0644'
+      when: ansible_service_mgr == 'systemd'
+      notify: restart dnclient
+
+  # Nothing above activates the binary, so a failure here has changed nothing
+  # about the running service — but a staged binary that doesn't run would keep
+  # shadowing the packaged one on PATH, so take it back off the host.
+  rescue:
+    - name: Remove the unusable custom dnclient binary
+      ansible.builtin.file:
+        path: "{{ dnclient_custom_bin }}"
+        state: absent
+
+    - name: Report the custom dnclient binary as unusable
+      ansible.builtin.fail:
+        msg: >-
+          {{ dnclient_custom_binary }} did not run on this host
+          ({{ dnclient_os }}/{{ dnclient_arch }}); it has been removed and
+          dnclient is untouched. Check that the build targets this platform.
+
+- name: Remove a previously pushed custom dnclient binary
+  when: dnclient_custom_binary is not defined
+  block:
+    - name: Remove the custom dnclient service drop-in
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnclient.service.d/10-custom-binary.conf
+        state: absent
+      when: ansible_service_mgr == 'systemd'
+      notify: restart dnclient
+
+    # On macOS this only removes the staging copy; install-binary.yml puts the
+    # released build back at dnclient_install_dir/dnclient.
+    - name: Remove the custom dnclient binary
+      ansible.builtin.file:
+        path: "{{ dnclient_custom_bin }}"
+        state: absent
+
+    - name: Check for other dnclient service drop-ins
+      ansible.builtin.find:
+        paths: /etc/systemd/system/dnclient.service.d
+        file_type: any
+      register: dnclient_other_dropins
+      when: ansible_service_mgr == 'systemd'
+
+    # Ours was the only one, so the directory goes too — but leave it alone if
+    # anything else owns a drop-in in there.
+    - name: Remove the empty dnclient drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnclient.service.d
+        state: absent
+      when:
+        - ansible_service_mgr == 'systemd'
+        - dnclient_other_dropins.matched | default(1) == 0
+
+# Writing the drop-in is what normally notifies the restart, so a restart lost
+# to a dropped connection leaves the drop-in in place and the old binary still
+# running — and the next run finds the drop-in already correct and notifies
+# nothing. Compare against what the service is actually executing instead.
+- name: Check which binary the dnclient service is running
+  ansible.builtin.command: systemctl show -p ExecStart --value dnclient
+  changed_when: false
+  check_mode: false
+  register: dnclient_running_execstart
+  when: ansible_service_mgr == 'systemd'
+
+- name: Restart dnclient onto the intended binary
+  ansible.builtin.debug:
+    msg: "dnclient is running {{ dnclient_running_execstart.stdout }}, expected {{ dnclient_intended_bin }}"
+  vars:
+    dnclient_intended_bin: "{{ dnclient_custom_bin if dnclient_custom_binary is defined else dnclient_bin }}"
+  changed_when: true
+  notify: restart dnclient
+  when:
+    - ansible_service_mgr == 'systemd'
+    # Empty on a host whose unit the package has not installed yet.
+    - dnclient_running_execstart.stdout | default('') | length > 0
+    - '"path=" ~ dnclient_intended_bin ~ " " not in dnclient_running_execstart.stdout'

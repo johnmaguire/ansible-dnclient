@@ -14,6 +14,7 @@
       https://dl.defined.net/unstable/binaries/dnclient/
   when:
     - dnclient_latest_url is not defined
+    - dnclient_custom_binary is not defined
     - dnclient_track == 'unstable'
     - dnclient_unstable_version is not defined
 
@@ -25,18 +26,18 @@
     group: "{{ root_group }}"
     mode: '1755'
 
-- set_fact:
-    dnclient_arch_map:
-      x86_64: amd64
-      aarch64: arm64
-      arm64: arm64
-    dnclient_os_map:
-      FreeBSD: freebsd
-      Darwin: macos
-      Windows: windows
-- set_fact:
-    dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
-    dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
+# There are no drop-ins here: the launchd plist names this path, so the custom
+# build has to occupy it. custom-binary.yml already staged and verified it.
+- name: Install the custom dnclient binary
+  ansible.builtin.copy:
+    src: "{{ dnclient_custom_bin }}"
+    remote_src: yes
+    dest: "{{ dnclient_install_dir }}/dnclient"
+    owner: root
+    group: "{{ root_group }}"
+    mode: '0755'
+  when: dnclient_custom_binary is defined
+  notify: restart dnclient
 
 - name: Determine latest dnclient release
   block:
@@ -55,6 +56,7 @@
         dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
   when:
     - dnclient_latest_url is not defined
+    - dnclient_custom_binary is not defined
     - dnclient_track == 'stable'
 
 # Tags use a hyphen (v0.9.6-rc0) where apt/rpm versions use a tilde (0.9.6~rc0).
@@ -64,6 +66,7 @@
       https://dl.defined.net/unstable/binaries/dnclient/{{ dnclient_unstable_version }}/{{ dnclient_os }}{{ '' if dnclient_os == 'macos' else '/' ~ dnclient_arch }}/dnclient
   when:
     - dnclient_latest_url is not defined
+    - dnclient_custom_binary is not defined
     - dnclient_track == 'unstable'
 
 - name: Download latest dnclient
@@ -74,6 +77,7 @@
     checksum: "{{ ('sha256:' ~ dnclient_latest_url ~ '.sha256') if dnclient_track == 'unstable' else omit }}"
     mode: '0755'
     force: yes
+  when: dnclient_custom_binary is not defined
   notify: restart dnclient
 
 - name: Populate service facts

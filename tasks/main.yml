@@ -23,6 +23,39 @@
     # in dnclient_install_dir.
     dnclient_bin: "{{ '/usr/bin/dnclient' if dnclient_install_method in ['apt', 'rpm', 'aur'] else dnclient_install_dir ~ '/dnclient' }}"
 
+# Names the platform's download from the downloads API, and available for
+# templating a per-platform dnclient_custom_binary path on the controller.
+- name: Set dnclient platform maps
+  set_fact:
+    dnclient_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+      arm64: arm64
+    dnclient_os_map:
+      FreeBSD: freebsd
+      Darwin: macos
+      Windows: windows
+
+- name: Set dnclient platform facts
+  set_fact:
+    dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
+    dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
+
+# A custom build shadows the packaged binary on PATH, so anything the role runs
+# directly — enrollment, service control — should be the custom build too. The
+# binary install method already has it at dnclient_bin.
+- name: Point dnclient_bin at the custom binary
+  set_fact:
+    dnclient_bin: "{{ dnclient_custom_bin }}"
+  when:
+    - dnclient_custom_binary is defined
+    - dnclient_install_method != 'binary'
+
+# Runs ahead of the install methods below: on a host with no dnclient yet, the
+# macOS service install needs the binary already staged.
+- name: Manage the custom dnclient binary
+  include_tasks: custom-binary.yml
+
 - name: Install dnclient from the apt repository (Debian/Ubuntu)
   include_tasks: install-apt.yml
   when: dnclient_install_method == 'apt'

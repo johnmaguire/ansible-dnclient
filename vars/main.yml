@@ -21,6 +21,13 @@
 # Tags use a hyphen; see https://dl.defined.net/unstable/binaries/dnclient/
 #dnclient_unstable_version: "v0.9.6-rc0"
 
+# dnclient_custom_binary is a path on the controller to a locally built
+# dnclient to run instead of the released one. Takes precedence over the track
+# and over dnclient_latest_url. Evaluated per host, so it can be templated by
+# platform using dnclient_os and dnclient_arch. Unset it to return the host to
+# the released build.
+#dnclient_custom_binary: "/home/me/src/dnclient/build/{{ dnclient_os }}-{{ dnclient_arch }}/dnclient"
+
 # dnclient_api_key is used to lookup network information and enroll hosts
 #dnclient_api_key: ... store this in ansible-vault or similar ...
 
