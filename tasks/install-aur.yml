@@ -29,6 +29,10 @@
 # with passwordless sudo for pacman (dnclient_aur_builder_user). Installed
 # while the legacy unit (if any) is still active, so the running service is
 # undisturbed; finalize-package.yml does the atomic switch.
+#
+# Unlike the deb/rpm postinsts, pacman never restarts units, so an upgrade
+# leaves the old build running until something bounces the service - hence the
+# restart notify.
 - name: Install dnclient
   become: yes
   become_user: "{{ dnclient_aur_builder_user }}"
@@ -36,6 +40,7 @@
     name: dnclient
     state: latest
     use: yay
+  notify: restart dnclient
 
 - name: Finalize dnclient package install
   ansible.builtin.include_tasks: finalize-package.yml
