@@ -1,0 +1,94 @@
+---
+# Install dnclient from the Windows MSI. The downloads API serves the stable
+# track; pre-release tags publish MSIs with .sha256 sidecars under
+# dl.defined.net/unstable, mirroring the pre-release binary layout.
+
+- name: Fail when the unstable track has no pinned version
+  ansible.builtin.fail:
+    msg: >-
+      dnclient_track=unstable requires dnclient_unstable_version to be set to a
+      published tag, e.g. "v0.9.8-rc1". Available tags are listed at
+      https://dl.defined.net/unstable/binaries/dnclient/
+  when:
+    - dnclient_track == 'unstable'
+    - dnclient_unstable_version is not defined
+
+- name: Determine latest dnclient release
+  block:
+    - name: Fetch dnclient release information
+      uri:
+        url: https://api.defined.net/v1/downloads
+        headers:
+          Authorization: "Bearer {{ dnclient_api_key | default(omit) }}"
+        return_content: yes
+      register: dnclient_downloads
+      delegate_to: localhost
+      become: no
+
+    - set_fact:
+        dnclient_msi_url: "{{ dnclient_downloads.json.data.dnclient.latest['windows-' ~ dnclient_arch ~ '-' ~ dnclient_windows_variant] }}"
+  when: dnclient_track == 'stable'
+
+- name: Build the unstable dnclient MSI URL
+  set_fact:
+    dnclient_msi_url: >-
+      https://dl.defined.net/unstable/binaries/dnclient/{{ dnclient_unstable_version }}/windows/{{ dnclient_arch }}/DNClient-{{ dnclient_windows_variant | capitalize }}.msi
+  when: dnclient_track == 'unstable'
+
+# Both URL forms embed the tag (.../v0.9.7/windows/...). The numeric part is
+# what the MSI records as DisplayVersion, so it drives the upgrade check;
+# pre-release builds sharing a base version therefore look identical here and
+# are not re-installed automatically.
+- name: Extract versions from the MSI URL
+  set_fact:
+    dnclient_msi_tag: "{{ dnclient_msi_url | regex_search('/(v[0-9][^/]*)/', '\\1') | first }}"
+    dnclient_msi_numeric: "{{ dnclient_msi_url | regex_search('/v([0-9.]+)', '\\1') | first }}"
+
+- name: Read the installed dnclient version
+  ansible.windows.win_shell: >-
+    $p = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+    Where-Object { $_.DisplayName -like 'DNClient*' };
+    if ($p) { $p.DisplayVersion } else { 'absent' }
+  register: dnclient_installed
+  changed_when: false
+
+- name: Download the dnclient MSI
+  ansible.windows.win_get_url:
+    url: "{{ dnclient_msi_url }}"
+    dest: C:\Windows\Temp\DNClient-{{ dnclient_windows_variant }}-{{ dnclient_msi_tag }}.msi
+    force: no
+    # The downloads API publishes no checksums; pre-release MSIs ship a
+    # .sha256 sidecar.
+    checksum_url: "{{ (dnclient_msi_url ~ '.sha256') if dnclient_track == 'unstable' else omit }}"
+    checksum_algorithm: sha256
+  register: dnclient_msi_file
+  when: (dnclient_installed.stdout | trim) != dnclient_msi_numeric
+
+- name: Install dnclient
+  ansible.windows.win_package:
+    path: "{{ dnclient_msi_file.dest }}"
+    state: present
+  when: "'absent' in dnclient_installed.stdout"
+
+# msiexec restarts the dnclient service, which severs a WinRM connection that
+# rides the host's own tunnel - so upgrades are fire-and-forget, mirroring the
+# detached restart handler, and the play reconnects afterwards.
+- name: Upgrade dnclient (detached)
+  ansible.windows.win_shell: >-
+    Start-Process msiexec -ArgumentList '/i', '{{ dnclient_msi_file.dest }}', '/qn'
+  register: dnclient_msi_upgrade
+  changed_when: true
+  when:
+    - "'absent' not in dnclient_installed.stdout"
+    - (dnclient_installed.stdout | trim) != dnclient_msi_numeric
+
+- name: Wait for the connection to recover after upgrade
+  wait_for_connection:
+    delay: 5
+    timeout: 180
+  when: dnclient_msi_upgrade is changed
+
+- name: Ensure the dnclient service is running
+  ansible.windows.win_service:
+    name: dnclient
+    state: started

@@ -13,15 +13,24 @@
   set_fact:
     root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
     # Debian/Ubuntu install from the apt repository, RHEL/Fedora from the rpm
-    # repository, Arch from the AUR. Platforms without a package (macOS)
-    # download the binary from the downloads API.
-    dnclient_install_method: "{{ 'apt' if ansible_os_family == 'Debian' else ('rpm' if ansible_os_family == 'RedHat' else ('aur' if ansible_os_family == 'Archlinux' else 'binary')) }}"
+    # repository, Arch from the AUR, Windows from the downloads API MSI.
+    # Platforms without a package (macOS) download the binary from the
+    # downloads API.
+    dnclient_install_method: >-
+      {{ {'Debian': 'apt',
+          'RedHat': 'rpm',
+          'Archlinux': 'aur',
+          'Windows': 'msi'}.get(ansible_os_family, 'binary') }}
 
 - name: Set dnclient binary path
   set_fact:
-    # The apt/rpm/aur packages install to /usr/bin; the downloaded binary lives
-    # in dnclient_install_dir.
-    dnclient_bin: "{{ '/usr/bin/dnclient' if dnclient_install_method in ['apt', 'rpm', 'aur'] else dnclient_install_dir ~ '/dnclient' }}"
+    # The apt/rpm/aur packages install to /usr/bin; the MSI to its Program
+    # Files tree; the downloaded binary (macOS) lives in dnclient_install_dir.
+    dnclient_bin: >-
+      {{ {'apt': '/usr/bin/dnclient',
+          'rpm': '/usr/bin/dnclient',
+          'aur': '/usr/bin/dnclient',
+          'msi': dnclient_win_dir ~ '\dnclient.exe'}.get(dnclient_install_method, dnclient_install_dir ~ '/dnclient') }}
 
 # Names the platform's download from the downloads API, and available for
 # templating a per-platform dnclient_custom_binary path on the controller.
@@ -31,6 +40,8 @@
       x86_64: amd64
       aarch64: arm64
       arm64: arm64
+      # Windows facts report a friendly name rather than the machine type.
+      '64-bit': amd64
     dnclient_os_map:
       FreeBSD: freebsd
       Darwin: macos
@@ -51,10 +62,18 @@
     - dnclient_custom_binary is defined
     - dnclient_install_method != 'binary'
 
+- name: Fail when a custom binary is requested on Windows
+  ansible.builtin.fail:
+    msg: dnclient_custom_binary is not supported on Windows hosts.
+  when:
+    - ansible_os_family == 'Windows'
+    - dnclient_custom_binary is defined
+
 # Runs ahead of the install methods below: on a host with no dnclient yet, the
 # macOS service install needs the binary already staged.
 - name: Manage the custom dnclient binary
   include_tasks: custom-binary.yml
+  when: ansible_os_family != 'Windows'
 
 - name: Install dnclient from the apt repository (Debian/Ubuntu)
   include_tasks: install-apt.yml
@@ -72,6 +91,13 @@
   include_tasks: install-binary.yml
   when: dnclient_install_method == 'binary'
 
+- name: Install dnclient from the downloads API MSI (Windows)
+  include_tasks: install-msi.yml
+  when: dnclient_install_method == 'msi'
+
+# DN API calls run from the controller: the API key never transits managed
+# hosts, and the tasks work unchanged on platforms without a Python runtime
+# (Windows). become is disabled so delegation doesn't try to sudo locally.
 - name: Fetch network information
   uri:
     url: https://api.defined.net/v2/networks
@@ -79,6 +105,9 @@
     headers:
       Authorization: "Bearer {{ dnclient_api_key }}"
   register: dn_network_results
+  delegate_to: localhost
+  become: no
+  no_log: true
   when: dnclient_api_key is defined and (dnclient_enroll or dnclient_firewall_exception)
 
 - name: Populate network facts
@@ -101,11 +130,17 @@
     - /var/lib/defined/dnclient.yml
     - /etc/defined/dnclient.yml
   register: dnclient_config_stat
-  when: dnclient_enroll
+  when: dnclient_enroll and ansible_os_family != 'Windows'
+
+- name: Check if dnclient is enrolled (Windows)
+  ansible.windows.win_stat:
+    path: "{{ dnclient_win_dir }}\\config\\dnclient.yml"
+  register: dnclient_config_stat_win
+  when: dnclient_enroll and ansible_os_family == 'Windows'
 
 - name: Determine enrollment status
   set_fact:
-    dnclient_enrolled: "{{ dnclient_config_stat.results | selectattr('stat.exists') | list | length > 0 }}"
+    dnclient_enrolled: "{{ (dnclient_config_stat_win.stat.exists | default(false)) if ansible_os_family == 'Windows' else (dnclient_config_stat.results | selectattr('stat.exists') | list | length > 0) }}"
   when: dnclient_enroll
 
 - name: Create and enroll host in DN inventory
@@ -144,10 +179,25 @@
             "tags": {{ dnclient_tags | default([]) | to_json }}
           }
       register: dn_host_results
+      delegate_to: localhost
+      become: no
+      no_log: true
 
     - name: Enroll host using enrollment code
       command:
         cmd: "{{ dnclient_bin }} enroll -code {{ dn_host_results.json.data.enrollmentCode.code }}"
+      no_log: true
+      when: ansible_os_family != 'Windows'
+
+    - name: Enroll host using enrollment code (Windows)
+      ansible.windows.win_command:
+        argv:
+          - "{{ dnclient_bin }}"
+          - enroll
+          - -code
+          - "{{ dn_host_results.json.data.enrollmentCode.code }}"
+      no_log: true
+      when: ansible_os_family == 'Windows'
   when: dnclient_enroll and not (dnclient_enrolled | default(false))
 
 - name: Add a firewall exception for dnclient network
@@ -162,4 +212,42 @@
         src: "{{ item }}"
       loop: "{{ dn_network_cidrs | default([]) }}"
       when: "'ufw' in ansible_facts.packages"
-  when: dnclient_firewall_exception
+  when: dnclient_firewall_exception and ansible_os_family != 'Windows'
+
+# Windows twin of the ufw exception: trust the mesh CIDRs wholesale and leave
+# per-port control to the DN role firewall, matching the product's model.
+- name: Add a firewall exception for dnclient network (Windows)
+  ansible.windows.win_shell: |
+    $cidrs = @({{ dn_network_cidrs | map('to_json') | join(', ') }})
+    if (Get-NetFirewallRule -Name 'dnclient-mesh' -ErrorAction SilentlyContinue) {
+      Set-NetFirewallRule -Name 'dnclient-mesh' -RemoteAddress $cidrs
+      'present'
+    } else {
+      New-NetFirewallRule -Name 'dnclient-mesh' -DisplayName 'Defined Networking mesh' `
+        -Direction Inbound -Action Allow -RemoteAddress $cidrs | Out-Null
+      'created'
+    }
+  register: dnclient_win_fw_mesh
+  changed_when: "'created' in dnclient_win_fw_mesh.stdout"
+  when:
+    - dnclient_firewall_exception
+    - ansible_os_family == 'Windows'
+    - dn_network_cidrs | default([]) | length > 0
+
+# A pinned listen port means unsolicited inbound underlay packets (direct
+# tunnels from LAN peers); the ephemeral-port default needs no inbound rule.
+- name: Allow the pinned Nebula listen port (Windows)
+  ansible.windows.win_shell: |
+    if (Get-NetFirewallRule -Name 'dnclient-underlay' -ErrorAction SilentlyContinue) {
+      Set-NetFirewallRule -Name 'dnclient-underlay' -Protocol UDP -LocalPort {{ dnclient_listen_port }}
+      'present'
+    } else {
+      New-NetFirewallRule -Name 'dnclient-underlay' -DisplayName 'Nebula underlay (udp {{ dnclient_listen_port }})' `
+        -Direction Inbound -Protocol UDP -LocalPort {{ dnclient_listen_port }} -Action Allow | Out-Null
+      'created'
+    }
+  register: dnclient_win_fw_underlay
+  changed_when: "'created' in dnclient_win_fw_underlay.stdout"
+  when:
+    - ansible_os_family == 'Windows'
+    - (dnclient_listen_port | default(0) | int) > 0

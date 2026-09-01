@@ -4,7 +4,7 @@
 - name: Reload systemd units
   ansible.builtin.systemd:
     daemon_reload: yes
-  when: ansible_service_mgr == 'systemd'
+  when: ansible_service_mgr | default('') == 'systemd'
   listen: "restart dnclient"
 
 # Restarting dnclient severs the very connection Ansible may be using to reach
@@ -23,12 +23,24 @@
 # any drop-in overriding the binary it runs.
 - name: Restart dnclient (systemd)
   ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
-  when: ansible_service_mgr == 'systemd'
+  when: ansible_service_mgr | default('') == 'systemd'
   listen: "restart dnclient"
 
 - name: Restart dnclient (other)
   ansible.builtin.shell: "nohup sh -c '{{ dnclient_bin }} stop && {{ dnclient_bin }} start' >/dev/null 2>&1 &"
-  when: ansible_service_mgr != 'systemd'
+  when:
+    - ansible_os_family != 'Windows'
+    - ansible_service_mgr | default('') != 'systemd'
+  listen: "restart dnclient"
+
+# Windows twin of the detached restart: fire-and-forget async survives the
+# WinRM connection dropping when the host's own tunnel goes down with the
+# service; the reconnect wait below picks the play back up.
+- name: Restart dnclient (Windows)
+  ansible.windows.win_shell: Restart-Service dnclient
+  async: 60
+  poll: 0
+  when: ansible_os_family == 'Windows'
   listen: "restart dnclient"
 
 - name: Wait for dnclient connection to recover
