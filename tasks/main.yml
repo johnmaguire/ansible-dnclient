@@ -110,16 +110,6 @@
   no_log: true
   when: dnclient_api_key is defined and (dnclient_enroll or dnclient_firewall_exception)
 
-- name: Populate network facts
-  set_fact:
-    dn_network_id: "{{ dnclient_network_id | default(dn_network.id) }}"
-    # v2 networks are dual-stack capable: cidrs lists every CIDR (IPv4 and,
-    # when enabled, IPv6).
-    dn_network_cidrs: "{{ dnclient_network_cidrs | default(dn_network.cidrs) }}"
-  vars:
-    dn_network: "{{ dn_network_results.json.data[0] }}"
-  when: dn_network_results.json is defined
-
 - name: Check if dnclient is enrolled
   # The apt/rpm/aur packages store network state in /var/lib/defined; older
   # binary installs use the legacy /etc/defined. Treat the host as enrolled if

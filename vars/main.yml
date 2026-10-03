@@ -1,6 +1,12 @@
 ---
 # vars file for dnclient
 
+# Explicit values win; otherwise fall back to the first network visible to the
+# API key. v2 networks are dual-stack capable: cidrs lists every CIDR (IPv4
+# and, when enabled, IPv6).
+dn_network_id: "{{ dnclient_network_id | default(dn_network_results.json.data[0].id) }}"
+dn_network_cidrs: "{{ dnclient_network_cidrs | default(dn_network_results.json.data[0].cidrs) }}"
+
 # dnclient_latest_url allows you to override the dnclient binary to download
 #dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
 
