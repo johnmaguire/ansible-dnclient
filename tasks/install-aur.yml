@@ -3,12 +3,12 @@
 # https://aur.archlinux.org/packages/dnclient
 #
 # The AUR package repackages the official deb: /usr/bin/dnclient, a unit in
-# /usr/lib/systemd/system, and state in /var/lib/defined — so it shares the
+# /usr/lib/systemd/system, and state in /var/lib/defined - so it shares the
 # apt/rpm finalization.
 
-# The AUR package follows tagged stable releases only — Defined Networking
+# The AUR package follows tagged stable releases only - Defined Networking
 # publishes pre-releases to the apt/rpm repositories and dl.defined.net, but
-# not to the AUR — so there is nothing for the unstable track to install here.
+# not to the AUR - so there is nothing for the unstable track to install here.
 - name: Fail when the unstable track is requested on Arch
   ansible.builtin.fail:
     msg: >-
@@ -34,7 +34,7 @@
 # leaves the old build running until something bounces the service - hence the
 # restart notify.
 - name: Install dnclient
-  become: yes
+  become: true
   become_user: "{{ dnclient_aur_builder_user }}"
   kewlfft.aur.aur:
     name: dnclient

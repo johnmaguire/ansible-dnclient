@@ -6,7 +6,7 @@
 #
 #   - the shadowing /etc/systemd/system/dnclient.service unit, which keeps the
 #     old /opt binary running instead of the packaged one;
-#   - state in /etc/defined — the packaged unit reads /var/lib/defined, and
+#   - state in /etc/defined - the packaged unit reads /var/lib/defined, and
 #     dnclient only falls back to /etc/defined with a deprecation warning.
 #
 # The package was already installed by the caller while the legacy unit (if
@@ -27,13 +27,13 @@
 
 - name: Reload systemd so the packaged unit takes effect
   ansible.builtin.systemd:
-    daemon_reload: yes
+    daemon_reload: true
   when: dnclient_legacy_unit.stat.exists
 
 - name: Restart dnclient onto the packaged unit, migrating legacy state (detached; survives the tunnel drop)
   # The state move must happen while dnclient is stopped. The start is
   # unconditional (';', not '&&') so a failed move cannot leave the host
-  # without its tunnel — dnclient still falls back to /etc/defined.
+  # without its tunnel - dnclient still falls back to /etc/defined.
   ansible.builtin.shell: >-
     nohup sh -c 'systemctl stop dnclient;
     {% if dnclient_legacy_state.stat.exists %}
@@ -51,7 +51,7 @@
 - name: Ensure dnclient is enabled and running
   ansible.builtin.systemd:
     name: dnclient
-    enabled: yes
+    enabled: true
     state: started
 
 - name: Remove the stale downloaded dnclient binary

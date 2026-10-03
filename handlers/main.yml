@@ -1,14 +1,14 @@
 ---
-# Handlers run in the order defined here, so this precedes the restart below —
+# Handlers run in the order defined here, so this precedes the restart below -
 # a change to the unit drop-in (see custom-binary.yml) is inert until reloaded.
 - name: Reload systemd units
   ansible.builtin.systemd:
-    daemon_reload: yes
+    daemon_reload: true
   when: ansible_service_mgr | default('') == 'systemd'
-  listen: "restart dnclient"
+  listen: restart dnclient
 
 # Restarting dnclient severs the very connection Ansible may be using to reach
-# the host (any host reached over its own Nebula link — e.g. a host addressed by
+# the host (any host reached over its own Nebula link - e.g. a host addressed by
 # its dnclient IP). Doing stop and start as separate tasks strands such a host:
 # the stop kills the connection before Ansible can deliver the start.
 #
@@ -24,14 +24,14 @@
 - name: Restart dnclient (systemd)
   ansible.builtin.shell: "nohup sh -c 'systemctl restart dnclient' >/dev/null 2>&1 &"
   when: ansible_service_mgr | default('') == 'systemd'
-  listen: "restart dnclient"
+  listen: restart dnclient
 
 - name: Restart dnclient (other)
   ansible.builtin.shell: "nohup sh -c '{{ dnclient_bin }} stop && {{ dnclient_bin }} start' >/dev/null 2>&1 &"
   when:
     - ansible_os_family != 'Windows'
     - ansible_service_mgr | default('') != 'systemd'
-  listen: "restart dnclient"
+  listen: restart dnclient
 
 # Windows twin of the detached restart: fire-and-forget async survives the
 # WinRM connection dropping when the host's own tunnel goes down with the
@@ -41,10 +41,10 @@
   async: 60
   poll: 0
   when: ansible_os_family == 'Windows'
-  listen: "restart dnclient"
+  listen: restart dnclient
 
 - name: Wait for dnclient connection to recover
   ansible.builtin.wait_for_connection:
     delay: 2
     timeout: 90
-  listen: "restart dnclient"
+  listen: restart dnclient

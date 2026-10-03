@@ -1,6 +1,6 @@
 ---
 # Download the dnclient binary from the downloads API and install the service
-# manually. Used on platforms without a Defined Networking package (Arch, macOS).
+# manually. Used on platforms without a Defined Networking package (macOS).
 
 # The downloads API only ever serves stable releases, and dl.defined.net
 # publishes no machine-readable index for pre-releases, so the unstable track
@@ -19,11 +19,11 @@
     - dnclient_unstable_version is not defined
 
 - name: Create directory for binary
-  file:
+  ansible.builtin.file:
     path: "{{ dnclient_install_dir }}"
     state: directory
     owner: root
-    group: "{{ root_group }}"
+    group: "{{ dnclient_root_group }}"
     mode: '1755'
 
 # There are no drop-ins here: the launchd plist names this path, so the custom
@@ -31,36 +31,34 @@
 - name: Install the custom dnclient binary
   ansible.builtin.copy:
     src: "{{ dnclient_custom_bin }}"
-    remote_src: yes
+    remote_src: true
     dest: "{{ dnclient_install_dir }}/dnclient"
     owner: root
-    group: "{{ root_group }}"
+    group: "{{ dnclient_root_group }}"
     mode: '0755'
   when: dnclient_custom_binary is defined
   notify: restart dnclient
 
 - name: Determine latest dnclient release
-  block:
-    - name: Fetch dnclient release information
-      uri:
-        url: https://api.defined.net/v1/downloads
-        headers: "{{ {'Authorization': 'Bearer ' ~ dnclient_api_key} if dnclient_api_key is defined else omit }}"
-        return_content: yes
-      register: dnclient_downloads
-
-    - set_fact:
-        dnclient_download_key: "{{ (dnclient_os == 'macos') | ternary('macos-universal-server', dnclient_os ~ '-' ~ dnclient_arch) }}"
-
-    - set_fact:
-        dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
   when:
     - dnclient_latest_url is not defined
     - dnclient_custom_binary is not defined
     - dnclient_track == 'stable'
+  block:
+    - name: Fetch dnclient release information
+      ansible.builtin.uri:
+        url: https://api.defined.net/v1/downloads
+        headers: "{{ {'Authorization': 'Bearer ' ~ dnclient_api_key} if dnclient_api_key is defined else omit }}"
+        return_content: true
+      register: dnclient_downloads
+
+    - name: Select download URL for this platform
+      ansible.builtin.set_fact:
+        dnclient_latest_url: "{{ dnclient_downloads.json.data.dnclient.latest[dnclient_download_key] }}"
 
 # Tags use a hyphen (v0.9.6-rc0) where apt/rpm versions use a tilde (0.9.6~rc0).
 - name: Build the unstable dnclient download URL
-  set_fact:
+  ansible.builtin.set_fact:
     dnclient_latest_url: >-
       https://dl.defined.net/unstable/binaries/dnclient/{{ dnclient_unstable_version }}/{{ dnclient_os }}{{ '' if dnclient_os == 'macos' else '/' ~ dnclient_arch }}/dnclient
   when:
@@ -69,42 +67,41 @@
     - dnclient_track == 'unstable'
 
 - name: Download latest dnclient
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ dnclient_latest_url }}"
     dest: "{{ dnclient_install_dir }}/dnclient"
     # Pre-release builds ship a .sha256 sidecar; the downloads API does not.
     checksum: "{{ ('sha256:' ~ dnclient_latest_url ~ '.sha256') if dnclient_track == 'unstable' else omit }}"
     mode: '0755'
-    force: yes
+    force: true
   when: dnclient_custom_binary is not defined
   notify: restart dnclient
 
 - name: Populate service facts
-  service_facts:
-  when: ansible_os_family != "Darwin"
+  ansible.builtin.service_facts:
+  when: ansible_os_family != 'Darwin'
 
 - name: Install dnclient service (Linux)
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
+  ansible.builtin.shell:
+    cmd: "{{ dnclient_bin }} install && {{ dnclient_bin }} start"
   when:
-    - ansible_os_family != "Darwin"
+    - ansible_os_family != 'Darwin'
     - "'dnclient.service' not in ansible_facts.services"
 
 - name: Install dnclient service (macOS)
-  shell:
-    cmd: "{{ dnclient_install_dir }}/dnclient install && {{ dnclient_install_dir }}/dnclient start"
-  args:
+  ansible.builtin.shell:
+    cmd: "{{ dnclient_bin }} install && {{ dnclient_bin }} start"
     creates: /Library/LaunchDaemons/dnclient.plist
-  when: ansible_os_family == "Darwin"
+  when: ansible_os_family == 'Darwin'
 
 - name: Ensure dnclient is running (Linux)
   ansible.builtin.service:
     name: dnclient
     state: started
-  when: ansible_os_family != "Darwin"
+  when: ansible_os_family != 'Darwin'
 
 - name: Ensure dnclient is running (macOS)
   community.general.launchd:
     name: dnclient
     state: started
-  when: ansible_os_family == "Darwin"
+  when: ansible_os_family == 'Darwin'

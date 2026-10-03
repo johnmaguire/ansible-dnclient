@@ -3,64 +3,7 @@
   ansible.builtin.assert:
     that: dnclient_track in ['stable', 'unstable']
     fail_msg: "dnclient_track must be 'stable' or 'unstable', got '{{ dnclient_track }}'"
-    quiet: yes
-
-- name: Set dnclient track facts
-  set_fact:
-    dnclient_inactive_track: "{{ 'unstable' if dnclient_track == 'stable' else 'stable' }}"
-
-- name: Set dnclient install facts
-  set_fact:
-    root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
-    # Debian/Ubuntu install from the apt repository, RHEL/Fedora from the rpm
-    # repository, Arch from the AUR, Windows from the downloads API MSI.
-    # Platforms without a package (macOS) download the binary from the
-    # downloads API.
-    dnclient_install_method: >-
-      {{ {'Debian': 'apt',
-          'RedHat': 'rpm',
-          'Archlinux': 'aur',
-          'Windows': 'msi'}.get(ansible_os_family, 'binary') }}
-
-- name: Set dnclient binary path
-  set_fact:
-    # The apt/rpm/aur packages install to /usr/bin; the MSI to its Program
-    # Files tree; the downloaded binary (macOS) lives in dnclient_install_dir.
-    dnclient_bin: >-
-      {{ {'apt': '/usr/bin/dnclient',
-          'rpm': '/usr/bin/dnclient',
-          'aur': '/usr/bin/dnclient',
-          'msi': dnclient_win_dir ~ '\dnclient.exe'}.get(dnclient_install_method, dnclient_install_dir ~ '/dnclient') }}
-
-# Names the platform's download from the downloads API, and available for
-# templating a per-platform dnclient_custom_binary path on the controller.
-- name: Set dnclient platform maps
-  set_fact:
-    dnclient_arch_map:
-      x86_64: amd64
-      aarch64: arm64
-      arm64: arm64
-      # Windows facts report a friendly name rather than the machine type.
-      '64-bit': amd64
-    dnclient_os_map:
-      FreeBSD: freebsd
-      Darwin: macos
-      Windows: windows
-
-- name: Set dnclient platform facts
-  set_fact:
-    dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
-    dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
-
-# A custom build shadows the packaged binary on PATH, so anything the role runs
-# directly — enrollment, service control — should be the custom build too. The
-# binary install method already has it at dnclient_bin.
-- name: Point dnclient_bin at the custom binary
-  set_fact:
-    dnclient_bin: "{{ dnclient_custom_bin }}"
-  when:
-    - dnclient_custom_binary is defined
-    - dnclient_install_method != 'binary'
+    quiet: true
 
 - name: Fail when a custom binary is requested on Windows
   ansible.builtin.fail:
@@ -72,49 +15,50 @@
 # Runs ahead of the install methods below: on a host with no dnclient yet, the
 # macOS service install needs the binary already staged.
 - name: Manage the custom dnclient binary
-  include_tasks: custom-binary.yml
+  ansible.builtin.include_tasks: custom-binary.yml
   when: ansible_os_family != 'Windows'
 
 - name: Install dnclient from the apt repository (Debian/Ubuntu)
-  include_tasks: install-apt.yml
+  ansible.builtin.include_tasks: install-apt.yml
   when: dnclient_install_method == 'apt'
 
 - name: Install dnclient from the rpm repository (RHEL/Fedora)
-  include_tasks: install-rpm.yml
+  ansible.builtin.include_tasks: install-rpm.yml
   when: dnclient_install_method == 'rpm'
 
 - name: Install dnclient from the AUR (Arch)
-  include_tasks: install-aur.yml
+  ansible.builtin.include_tasks: install-aur.yml
   when: dnclient_install_method == 'aur'
 
 - name: Install dnclient from the downloads API (macOS)
-  include_tasks: install-binary.yml
+  ansible.builtin.include_tasks: install-binary.yml
   when: dnclient_install_method == 'binary'
 
 - name: Install dnclient from the downloads API MSI (Windows)
-  include_tasks: install-msi.yml
+  ansible.builtin.include_tasks: install-msi.yml
   when: dnclient_install_method == 'msi'
 
 # DN API calls run from the controller: the API key never transits managed
 # hosts, and the tasks work unchanged on platforms without a Python runtime
 # (Windows). become is disabled so delegation doesn't try to sudo locally.
 - name: Fetch network information
-  uri:
+  ansible.builtin.uri:
     url: https://api.defined.net/v2/networks
-    method: GET
     headers:
       Authorization: "Bearer {{ dnclient_api_key }}"
   register: dn_network_results
   delegate_to: localhost
-  become: no
+  become: false
   no_log: true
-  when: dnclient_api_key is defined and (dnclient_enroll or dnclient_firewall_exception)
+  when:
+    - dnclient_api_key is defined
+    - dnclient_enroll or dnclient_firewall_exception
 
+# The apt/rpm/aur packages store network state in /var/lib/defined; older
+# binary installs use the legacy /etc/defined. Treat the host as enrolled if
+# a config exists in either location.
 - name: Check if dnclient is enrolled
-  # The apt/rpm/aur packages store network state in /var/lib/defined; older
-  # binary installs use the legacy /etc/defined. Treat the host as enrolled if
-  # a config exists in either location.
-  stat:
+  ansible.builtin.stat:
     path: "{{ item }}"
   loop:
     - /var/lib/defined/dnclient.yml
@@ -129,26 +73,31 @@
   when: dnclient_enroll and ansible_os_family == 'Windows'
 
 - name: Determine enrollment status
-  set_fact:
+  ansible.builtin.set_fact:
     dnclient_enrolled: "{{ (dnclient_config_stat_win.stat.exists | default(false)) if ansible_os_family == 'Windows' else (dnclient_config_stat.results | selectattr('stat.exists') | list | length > 0) }}"
   when: dnclient_enroll
 
 - name: Create and enroll host in DN inventory
+  when: dnclient_enroll and not (dnclient_enrolled | default(false))
   block:
-    - name: Ensure dnclient service is started
-      block:
-        - debug: msg="triggering dnclient restart"
-          notify: restart dnclient
-          changed_when: true
-        - meta: flush_handlers
+    # Enrollment talks to the running daemon, so restart it first to make sure
+    # it is up and running the intended binary.
+    - name: Trigger dnclient restart
+      ansible.builtin.debug:
+        msg: Restarting dnclient before enrollment
+      changed_when: true
+      notify: restart dnclient
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
 
     # TODO handle ERR_DUPLICATE_VALUE - maybe we should re-enroll?
     # v1 rejects hosts on v2 networks with ERR_CERT_VERSION_2_INCOMPATIBLE.
     # v2 replaces the singular ipAddress with an ipAddresses list (max 2, one
     # per family). On a dual-stack network an IPv4 address is only assigned if
-    # one is requested — sending the v1 field silently yields an IPv6-only host.
+    # one is requested - sending the v1 field silently yields an IPv6-only host.
     - name: Create host in DN inventory
-      uri:
+      ansible.builtin.uri:
         url: https://api.defined.net/v2/host-and-enrollment-code
         method: POST
         headers:
@@ -156,11 +105,13 @@
         body_format: json
         body: "{{ enrollment_payload }}"
       vars:
+        # Rendered as a JSON document rather than a YAML mapping so that the
+        # null, false and 0 defaults keep their JSON types.
         enrollment_payload: |
           {
             "name": {{ dnclient_hostname | default(inventory_hostname) | to_json }},
             "networkID": {{ dn_network_id | to_json }},
-            "roleID": {{ dnclient_role_id | default(None) | to_json  }},
+            "roleID": {{ dnclient_role_id | default(None) | to_json }},
             "ipAddresses": {{ dnclient_ip_addresses | default([dnclient_ip_address] if dnclient_ip_address is defined else []) | to_json }},
             "staticAddresses": {{ dnclient_static_addresses | default([]) | to_json }},
             "listenPort": {{ dnclient_listen_port | default(0) | to_json }},
@@ -170,11 +121,11 @@
           }
       register: dn_host_results
       delegate_to: localhost
-      become: no
+      become: false
       no_log: true
 
     - name: Enroll host using enrollment code
-      command:
+      ansible.builtin.command:
         cmd: "{{ dnclient_bin }} enroll -code {{ dn_host_results.json.data.enrollmentCode.code }}"
       no_log: true
       when: ansible_os_family != 'Windows'
@@ -188,21 +139,19 @@
           - "{{ dn_host_results.json.data.enrollmentCode.code }}"
       no_log: true
       when: ansible_os_family == 'Windows'
-  when: dnclient_enroll and not (dnclient_enrolled | default(false))
 
 - name: Add a firewall exception for dnclient network
+  when: dnclient_firewall_exception and ansible_os_family != 'Windows'
   block:
     - name: Gather the package facts
       ansible.builtin.package_facts:
-        manager: auto
 
-    - name: Add an exception for dnclient network CIDRs in ufw
+    - name: Allow traffic from dnclient network CIDRs in ufw
       community.general.ufw:
         rule: allow
         src: "{{ item }}"
       loop: "{{ dn_network_cidrs | default([]) }}"
       when: "'ufw' in ansible_facts.packages"
-  when: dnclient_firewall_exception and ansible_os_family != 'Windows'
 
 # Windows twin of the ufw exception: trust the mesh CIDRs wholesale and leave
 # per-port control to the DN role firewall, matching the product's model.

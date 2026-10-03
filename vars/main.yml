@@ -1,76 +1,53 @@
 ---
-# vars file for dnclient
+# Internal variables. User-facing knobs live in defaults/main.yml.
+
+dnclient_root_group: "{{ 'wheel' if ansible_os_family == 'Darwin' else 'root' }}"
+dnclient_inactive_track: "{{ 'unstable' if dnclient_track == 'stable' else 'stable' }}"
+
+# Debian/Ubuntu install from the apt repository, RHEL/Fedora from the rpm
+# repository, Arch from the AUR, Windows from the downloads API MSI.
+# Platforms without a package (macOS) download the binary from the
+# downloads API.
+dnclient_install_method: >-
+  {{ {'Debian': 'apt',
+      'RedHat': 'rpm',
+      'Archlinux': 'aur',
+      'Windows': 'msi'}.get(ansible_os_family, 'binary') }}
+
+# The apt/rpm/aur packages install to /usr/bin; the MSI to its Program Files
+# tree; the downloaded binary (macOS) lives in dnclient_install_dir.
+#
+# A custom build shadows the packaged binary on PATH, so anything the role runs
+# directly (enrollment, service control) should be the custom build too. The
+# binary install method copies it into dnclient_install_dir instead, so the
+# default path already points at it there.
+dnclient_bin: >-
+  {{ dnclient_custom_bin
+     if dnclient_custom_binary is defined and dnclient_install_method != 'binary'
+     else {'apt': '/usr/bin/dnclient',
+           'rpm': '/usr/bin/dnclient',
+           'aur': '/usr/bin/dnclient',
+           'msi': dnclient_win_dir ~ '\dnclient.exe'}.get(dnclient_install_method, dnclient_install_dir ~ '/dnclient') }}
+
+# Names the platform's download from the downloads API, and available for
+# templating a per-platform dnclient_custom_binary path on the controller.
+dnclient_arch_map:
+  x86_64: amd64
+  aarch64: arm64
+  arm64: arm64
+  # Windows facts report a friendly name rather than the machine type.
+  '64-bit': amd64
+dnclient_os_map:
+  FreeBSD: freebsd
+  Darwin: macos
+  Windows: windows
+dnclient_os: "{{ dnclient_os_map[ansible_os_family] | default('linux') }}"
+dnclient_arch: "{{ dnclient_arch_map[ansible_architecture] }}"
+# macOS ships a single universal binary, so it has no per-arch download key.
+dnclient_download_key: "{{ 'macos-universal-server' if dnclient_os == 'macos' else dnclient_os ~ '-' ~ dnclient_arch }}"
 
 # Explicit values win; otherwise fall back to the first network visible to the
 # API key. v2 networks are dual-stack capable: cidrs lists every CIDR (IPv4
 # and, when enabled, IPv6).
 dn_network_id: "{{ dnclient_network_id | default(dn_network_results.json.data[0].id) }}"
 dn_network_cidrs: "{{ dnclient_network_cidrs | default(dn_network_results.json.data[0].cidrs) }}"
-
-# dnclient_latest_url allows you to override the dnclient binary to download
-#dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
-
-# dnclient_track selects the release track: "stable" (default) or "unstable"
-# (pre-release builds). Not supported on Arch — the AUR package follows stable
-# releases only.
-#dnclient_track: "unstable"
-
-# dnclient_version pins an exact package version on apt/rpm hosts, overriding
-# the track's newest. Package versions spell pre-releases with a tilde, so the
-# v0.9.6-rc0 tag is 0.9.6~rc0 here. Use this when the newest build you want
-# sorts BELOW one already published — dpkg/rpm compare the pre-release word
-# alphabetically, so 0.9.6~ci4 loses to 0.9.6~rc0 no matter which came first.
-#dnclient_version: "0.9.6~rc0"
-
-# dnclient_unstable_version names the tag to install on hosts without a
-# package repository (macOS), where the unstable track has no "latest".
-# Tags use a hyphen; see https://dl.defined.net/unstable/binaries/dnclient/
-#dnclient_unstable_version: "v0.9.6-rc0"
-
-# dnclient_custom_binary is a path on the controller to a locally built
-# dnclient to run instead of the released one. Takes precedence over the track
-# and over dnclient_latest_url. Evaluated per host, so it can be templated by
-# platform using dnclient_os and dnclient_arch. Unset it to return the host to
-# the released build.
-#dnclient_custom_binary: "/home/me/src/dnclient/build/{{ dnclient_os }}-{{ dnclient_arch }}/dnclient"
-
-# dnclient_api_key is used to lookup network information and enroll hosts
-#dnclient_api_key: ... store this in ansible-vault or similar ...
-
-# dnclient_network_id lets you specify the network ID specified when creating a host.
-# By default, this will be looked up using dnclient_api_key.
-#dnclient_network_id: "network-AAAAAAAAAAAAAAAAAAAAAAAAAA"
-
-# dnclient_role_id allows for specifying a role ID when creating a host.
-#dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
-
-# dnclient_network_cidrs lets you define the network CIDRs (IPv4 and/or IPv6)
-# to add exceptions for in firewalls (currently only ufw is supported)
-# If dnclient_api_key is defined, these will be automatically looked up.
-#dnclient_network_cidrs: ["192.168.123.0/24", "fd00:1234::/80"]
-
-# dnclient_hostname lets you define the host's DN hostname.
-# By default he inventory hostname will be used.
-#dnclient_hostname: "lighthouse1"
-
-# dnclient_ip_address can be used to specify the host's DN IP address.
-# By default the server will select the next available address.
-#dnclient_ip_address: "192.168.123.1"
-
-# dnclient_is_lighthouse can be used to mark the host as a lighthouse.
-# Note: A host may be a lighthouse or a relay, but not both.
-#dnclient_is_lighthouse: yes
-
-# dnclient_is_relay can be used to mark the host as a relay.
-# Note: A host may be a lighthouse or a relay, but not both.
-#dnclient_is_relay: yes
-
-# dnclient_static_addresses can be used to specify static address:port combinations to locate a host.
-# These can be defined using DNS names or IP addresses. Relays and lighthouses must specify at least one static address.
-#dnclient_static_addresses: ["lighthouse1.example.com:4242"]
-
-# dnclient_listen_port allows you to specify a static port for Nebula to listen on.
-#dnclient_listen_port: 4242
-
-# dnclient_tags is a list of key-value tags to assign to the host.
-#dnclient_tags: ["env:prod"]

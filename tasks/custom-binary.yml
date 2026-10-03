@@ -20,13 +20,13 @@
         src: "{{ dnclient_custom_binary }}"
         dest: "{{ dnclient_custom_bin }}"
         owner: root
-        group: "{{ root_group }}"
+        group: "{{ dnclient_root_group }}"
         mode: '0755'
 
     - name: Verify the custom dnclient binary runs on this host
       # Cross-building for the wrong OS or architecture is the easy mistake to
       # make, and what it breaks is the tunnel this play may be running over.
-      # Nothing is active yet at this point — the service still runs the
+      # Nothing is active yet at this point - the service still runs the
       # released build until the drop-in below.
       ansible.builtin.command: "{{ dnclient_custom_bin }} -version"
       changed_when: false
@@ -56,7 +56,7 @@
       notify: restart dnclient
 
   # Nothing above activates the binary, so a failure here has changed nothing
-  # about the running service — but a staged binary that doesn't run would keep
+  # about the running service - but a staged binary that doesn't run would keep
   # shadowing the packaged one on PATH, so take it back off the host.
   rescue:
     - name: Remove the unusable custom dnclient binary
@@ -95,7 +95,7 @@
       register: dnclient_other_dropins
       when: ansible_service_mgr == 'systemd'
 
-    # Ours was the only one, so the directory goes too — but leave it alone if
+    # Ours was the only one, so the directory goes too - but leave it alone if
     # anything else owns a drop-in in there.
     - name: Remove the empty dnclient drop-in directory
       ansible.builtin.file:
@@ -107,7 +107,7 @@
 
 # Writing the drop-in is what normally notifies the restart, so a restart lost
 # to a dropped connection leaves the drop-in in place and the old binary still
-# running — and the next run finds the drop-in already correct and notifies
+# running - and the next run finds the drop-in already correct and notifies
 # nothing. Compare against what the service is actually executing instead.
 - name: Check which binary the dnclient service is running
   ansible.builtin.command: systemctl show -p ExecStart --value dnclient

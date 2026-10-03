@@ -14,22 +14,23 @@
     - dnclient_unstable_version is not defined
 
 - name: Determine latest dnclient release
+  when: dnclient_track == 'stable'
   block:
     - name: Fetch dnclient release information
-      uri:
+      ansible.builtin.uri:
         url: https://api.defined.net/v1/downloads
         headers: "{{ {'Authorization': 'Bearer ' ~ dnclient_api_key} if dnclient_api_key is defined else omit }}"
-        return_content: yes
+        return_content: true
       register: dnclient_downloads
       delegate_to: localhost
-      become: no
+      become: false
 
-    - set_fact:
+    - name: Select MSI URL for this platform
+      ansible.builtin.set_fact:
         dnclient_msi_url: "{{ dnclient_downloads.json.data.dnclient.latest['windows-' ~ dnclient_arch ~ '-' ~ dnclient_windows_variant] }}"
-  when: dnclient_track == 'stable'
 
 - name: Build the unstable dnclient MSI URL
-  set_fact:
+  ansible.builtin.set_fact:
     dnclient_msi_url: >-
       https://dl.defined.net/unstable/binaries/dnclient/{{ dnclient_unstable_version }}/windows/{{ dnclient_arch }}/DNClient-{{ dnclient_windows_variant | capitalize }}.msi
   when: dnclient_track == 'unstable'
@@ -39,7 +40,7 @@
 # pre-release builds sharing a base version therefore look identical here and
 # are not re-installed automatically.
 - name: Extract versions from the MSI URL
-  set_fact:
+  ansible.builtin.set_fact:
     dnclient_msi_tag: "{{ dnclient_msi_url | regex_search('/(v[0-9][^/]*)/', '\\1') | first }}"
     dnclient_msi_numeric: "{{ dnclient_msi_url | regex_search('/v([0-9.]+)', '\\1') | first }}"
 
@@ -55,7 +56,7 @@
   ansible.windows.win_get_url:
     url: "{{ dnclient_msi_url }}"
     dest: C:\Windows\Temp\DNClient-{{ dnclient_windows_variant }}-{{ dnclient_msi_tag }}.msi
-    force: no
+    force: false
     # The downloads API publishes no checksums; pre-release MSIs ship a
     # .sha256 sidecar.
     checksum_url: "{{ (dnclient_msi_url ~ '.sha256') if dnclient_track == 'unstable' else omit }}"
@@ -82,7 +83,7 @@
     - (dnclient_installed.stdout | trim) != dnclient_msi_numeric
 
 - name: Wait for the connection to recover after upgrade
-  wait_for_connection:
+  ansible.builtin.wait_for_connection:
     delay: 5
     timeout: 180
   when: dnclient_msi_upgrade is changed

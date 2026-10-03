@@ -22,6 +22,9 @@ is published for them.
 Requirements
 ------------
 
+The `community.general` collection is required for the ufw firewall exception
+and for macOS hosts, and the `ansible.windows` collection for Windows hosts.
+
 On Arch Linux hosts, the `kewlfft.aur` collection must be installed on the
 controller, and the host must have `yay` and an unprivileged build user
 (`dnclient_aur_builder_user`, default `builduser`) that can run `pacman` via
@@ -98,7 +101,7 @@ Optionally, you can configure the enrolled host using:
 ```
 dnclient_hostname: "lighthouse1"
 dnclient_network_id: "network-AAAAAAAAAAAAAAAAAAAAAAAAAA"
-dnclient_ip_address: "192.168.123.1"
+dnclient_ip_address: "192.168.123.1" # or dnclient_ip_addresses: ["192.168.123.1", "fd00:1234::1"]
 dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
 dnclient_static_addresses: ["lighthouse1.example.com:4242"]
 dnclient_listen_port: 4242
@@ -117,7 +120,8 @@ dnclient_network_cidrs: ["192.168.123.0/24", "fd00:1234::/80"] # auto-detected i
 Dependencies
 ------------
 
-The `kewlfft.aur` collection, on Arch Linux hosts only.
+The `community.general` and `ansible.windows` collections, and `kewlfft.aur` on
+Arch Linux hosts only.
 
 Example Playbook
 ----------------

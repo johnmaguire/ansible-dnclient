@@ -1,21 +1,88 @@
 ---
-# defaults file for dnclient
 dnclient_install_dir: "/opt/defined"
+dnclient_enroll: false
+dnclient_firewall_exception: false
+# Release track to follow: "stable" or "unstable" (pre-release builds).
+# The unstable repositories are a superset of stable, so only one is ever
+# enabled at a time.
+dnclient_track: "stable"
 # Unprivileged user the AUR build runs as on Arch. Must exist, have yay
 # installed, and be able to run pacman via passwordless sudo.
 dnclient_aur_builder_user: "builduser"
 # Where a custom build pushed via dnclient_custom_binary lands. Ahead of
 # /usr/bin on PATH, so it shadows the packaged binary for interactive use too.
 dnclient_custom_bin: "/usr/local/bin/dnclient"
-dnclient_firewall_exception: false
-dnclient_enroll: false
 # Windows MSI flavor from the downloads API: "server" (headless service) or
 # "desktop" (tray UI).
 dnclient_windows_variant: "server"
 # The MSI's install tree. Enrollment state lives under config\ inside it, not
 # ProgramData.
 dnclient_win_dir: 'C:\Program Files\Defined Networking\DNClient'
-# Release track to follow: "stable" or "unstable" (pre-release builds).
-# The unstable repositories are a superset of stable, so only one is ever
-# enabled at a time.
-dnclient_track: "stable"
+
+# The variables below are optional and have no default.
+
+# dnclient_latest_url overrides the dnclient binary to download on platforms
+# that install the binary directly (macOS).
+#dnclient_latest_url: "https://dl.defined.net/02c6d0f9/v0.1.9/linux/amd64/dnclient"
+
+# dnclient_version pins an exact package version on apt/rpm hosts, overriding
+# the track's newest. Package versions spell pre-releases with a tilde, so the
+# v0.9.6-rc0 tag is 0.9.6~rc0 here. Use this when the newest build you want
+# sorts BELOW one already published - dpkg/rpm compare the pre-release word
+# alphabetically, so 0.9.6~ci4 loses to 0.9.6~rc0 no matter which came first.
+#dnclient_version: "0.9.6~rc0"
+
+# dnclient_unstable_version names the tag to install on hosts without a
+# package repository (macOS), where the unstable track has no "latest".
+# Tags use a hyphen; see https://dl.defined.net/unstable/binaries/dnclient/
+#dnclient_unstable_version: "v0.9.6-rc0"
+
+# dnclient_custom_binary is a path on the controller to a locally built
+# dnclient to run instead of the released one. Takes precedence over the track
+# and over dnclient_latest_url. Evaluated per host, so it can be templated by
+# platform using dnclient_os and dnclient_arch. Unset it to return the host to
+# the released build.
+#dnclient_custom_binary: "/home/me/src/dnclient/build/{{ dnclient_os }}-{{ dnclient_arch }}/dnclient"
+
+# dnclient_api_key is used to look up network information and enroll hosts.
+#dnclient_api_key: ... store this in ansible-vault or similar ...
+
+# dnclient_network_id is the network to create the host in.
+# By default, this is looked up using dnclient_api_key.
+#dnclient_network_id: "network-AAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+# dnclient_role_id is the role to assign when creating the host.
+#dnclient_role_id: "role-AAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+# dnclient_network_cidrs lists the network CIDRs (IPv4 and/or IPv6) to allow in
+# firewalls (currently only ufw is supported).
+# If dnclient_api_key is defined, these are looked up automatically.
+#dnclient_network_cidrs: ["192.168.123.0/24", "fd00:1234::/80"]
+
+# dnclient_hostname is the host's DN hostname.
+# By default the inventory hostname is used.
+#dnclient_hostname: "lighthouse1"
+
+# dnclient_ip_addresses lists the host's DN IP addresses, at most one per
+# address family. dnclient_ip_address is a shorthand for a single address.
+# By default the server selects the next available address.
+#dnclient_ip_addresses: ["192.168.123.1", "fd00:1234::1"]
+#dnclient_ip_address: "192.168.123.1"
+
+# dnclient_is_lighthouse marks the host as a lighthouse.
+# Note: A host may be a lighthouse or a relay, but not both.
+#dnclient_is_lighthouse: true
+
+# dnclient_is_relay marks the host as a relay.
+# Note: A host may be a lighthouse or a relay, but not both.
+#dnclient_is_relay: true
+
+# dnclient_static_addresses is a list of static address:port combinations used to locate the host.
+# These can be DNS names or IP addresses. Relays and lighthouses must specify at least one.
+#dnclient_static_addresses: ["lighthouse1.example.com:4242"]
+
+# dnclient_listen_port is a static port for Nebula to listen on.
+#dnclient_listen_port: 4242
+
+# dnclient_tags is a list of key:value tags to assign to the host.
+#dnclient_tags: ["env:prod"]
