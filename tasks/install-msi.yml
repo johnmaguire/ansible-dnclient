@@ -18,8 +18,7 @@
     - name: Fetch dnclient release information
       uri:
         url: https://api.defined.net/v1/downloads
-        headers:
-          Authorization: "Bearer {{ dnclient_api_key | default(omit) }}"
+        headers: "{{ {'Authorization': 'Bearer ' ~ dnclient_api_key} if dnclient_api_key is defined else omit }}"
         return_content: yes
       register: dnclient_downloads
       delegate_to: localhost
