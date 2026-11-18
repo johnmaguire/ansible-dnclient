@@ -24,6 +24,8 @@
       register: dnclient_downloads
       delegate_to: localhost
       become: false
+      # The optional Authorization header carries dnclient_api_key.
+      no_log: true
 
     - name: Select MSI URL for this platform
       ansible.builtin.set_fact:

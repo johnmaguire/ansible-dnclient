@@ -51,6 +51,8 @@
         headers: "{{ {'Authorization': 'Bearer ' ~ dnclient_api_key} if dnclient_api_key is defined else omit }}"
         return_content: true
       register: dnclient_downloads
+      # The optional Authorization header carries dnclient_api_key.
+      no_log: true
 
     - name: Select download URL for this platform
       ansible.builtin.set_fact:
