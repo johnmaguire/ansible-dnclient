@@ -53,6 +53,8 @@
       register: dnclient_downloads
       # The optional Authorization header carries dnclient_api_key.
       no_log: true
+      # A read-only GET; later tasks need its result in check mode too.
+      check_mode: false
 
     - name: Select download URL for this platform
       ansible.builtin.set_fact:

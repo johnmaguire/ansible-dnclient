@@ -26,6 +26,8 @@
       become: false
       # The optional Authorization header carries dnclient_api_key.
       no_log: true
+      # A read-only GET; later tasks need its result in check mode too.
+      check_mode: false
 
     - name: Select MSI URL for this platform
       ansible.builtin.set_fact:
@@ -53,6 +55,7 @@
     if ($p) { $p.DisplayVersion } else { 'absent' }
   register: dnclient_installed
   changed_when: false
+  check_mode: false
 
 - name: Download the dnclient MSI
   ansible.windows.win_get_url:
